@@ -18,6 +18,7 @@ public class SkullduggeryServer extends Activity {
         try{
         	ServerSocket sskt = new ServerSocket(9002);
         	TextView tv = (TextView) findViewById(R.id.text_view);
+        	while(true){
         	Socket skt = sskt.accept();
 	        BufferedReader in = new BufferedReader(new InputStreamReader(skt.getInputStream()));
 	        String s;
@@ -28,7 +29,8 @@ public class SkullduggeryServer extends Activity {
 	        }
 	        in.close();
 	        skt.close();
-	        sskt.close();
+        	}
+	        //sskt.close();
         }
         catch (Exception e){
         	
