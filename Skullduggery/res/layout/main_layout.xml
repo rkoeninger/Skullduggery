@@ -4,15 +4,20 @@
     android:layout_width="fill_parent"
     android:layout_height="fill_parent"
     >
+<TextView
+	android:id="@+id/text_view"
+	android:layout_width="fill_parent"
+	android:layout_height="wrap_content"
+	/>
 <EditText 
 	android:id="@+id/edit_text"
-    android:layout_width="wrap_content" 
+    android:layout_width="fill_parent" 
     android:layout_height="wrap_content" 
-    android:text="Editable shite."
+    android:text="Type and click."
     />
 <Button
 	android:id="@+id/send_button"
-	android:layout_width="wrap_content"
+	android:layout_width="fill_parent"
 	android:layout_height="wrap_content"
 	android:text="Send now!"
 	/>
