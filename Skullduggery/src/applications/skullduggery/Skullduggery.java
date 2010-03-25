@@ -21,7 +21,7 @@ public class Skullduggery extends Activity {
 	
 	private void SendString(String s)
 	{
-		T.SendString(s);		
+		T.SendString(s+" i suck");		
 	}
 	
     /** Called when the activity is first created. */
