@@ -11,7 +11,7 @@ import android.widget.EditText;
 import android.widget.TextView;
 import java.io.IOException;
 
-//test comment.
+//test comment 2.
 
 public class Skullduggery extends Activity {
 	private final Handler mHandler = new Handler();
