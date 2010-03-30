@@ -24,49 +24,6 @@ public class SkullAudio extends Activity {
         setContentView(R.layout.main);
         T = new ListenThread();
         T.start();
-        AudioRecord SoundRecorder = new AudioRecord(MediaRecorder.AudioSource.DEFAULT,
-        		11025,AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_8BIT, 
-        		AudioRecord.getMinBufferSize(11025, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_8BIT) * 16);
-        SoundRecorder.setRecordPositionUpdateListener(
-        		new OnRecordPositionUpdateListener() {
-					
-					@Override
-					public void onPeriodicNotification(AudioRecord recorder) {
-						byte[] audioData = new byte[1024];
-						int len = 0;
-						
-						while((len = recorder.read(audioData, 0, audioData.length)) > 0)
-						{
-							try {
-								T.write(audioData, len);
-							} catch (IOException e) {
-								e.printStackTrace();
-								break;
-							}
-						}
-						
-						// TODO Auto-generated method stub
-						
-					}
-					
-					@Override
-					public void onMarkerReached(AudioRecord recorder) {
-						int format = 		recorder.getAudioFormat();
-						int channelConfig = recorder.getChannelConfiguration();
-						int sampleRate = 	recorder.getSampleRate();
-						try {
-							DataOutputStream DOS = new DataOutputStream(T.soundSock.getOutputStream());
-							DOS.writeInt(sampleRate);
-							DOS.writeInt(channelConfig);
-							DOS.writeInt(format);
-						}
-						catch (IOException e) {
-						
-						}
-						
-						onPeriodicNotification(recorder);
-					}
-				});
     }
     
     
@@ -76,6 +33,55 @@ public class SkullAudio extends Activity {
 
     	public ListenThread()
     	{
+    		int source = MediaRecorder.AudioSource.DEFAULT;
+    		int bitRate = 8000; //11025, 22050, 44100
+    		int channelConfig = AudioFormat.CHANNEL_IN_MONO;
+    		int encoding = AudioFormat.ENCODING_PCM_16BIT;
+    		//int encoding = AudioFormat.ENCODING_PCM_8BIT;
+    		int bufSize = AudioRecord.getMinBufferSize(bitRate, channelConfig, encoding);
+    		
+    		AudioRecord SoundRecorder = new AudioRecord(source, bitRate, channelConfig, encoding, bufSize);
+            SoundRecorder.setRecordPositionUpdateListener(
+            		new OnRecordPositionUpdateListener() {    					
+    					@Override
+    					public void onPeriodicNotification(AudioRecord recorder) {
+    						byte[] audioData = new byte[1024];
+    						int len = 0;
+    						
+    						while((len = recorder.read(audioData, 0, audioData.length)) > 0)
+    						{
+    							try {
+    								write(audioData, len);
+    							} catch (IOException e) {
+    								e.printStackTrace();
+    								break;
+    							}
+    						}
+    						
+    						// TODO Auto-generated method stub
+    						
+    					}
+    					
+    					@Override
+    					public void onMarkerReached(AudioRecord recorder) {
+    						int format = 		recorder.getAudioFormat();
+    						int channelConfig = recorder.getChannelConfiguration();
+    						int sampleRate = 	recorder.getSampleRate();
+    						try {
+    							DataOutputStream DOS = new DataOutputStream(soundSock.getOutputStream());
+    							DOS.writeInt(sampleRate);
+    							DOS.writeInt(channelConfig);
+    							DOS.writeInt(format);
+    						}
+    						catch (IOException e) {
+    						
+    						}
+    						
+    						onPeriodicNotification(recorder);
+    					}
+    				});
+            SoundRecorder.startRecording();
+            
     		try{
     			soundSock = new Socket("10.0.2.2", 9002);
     		}
@@ -106,7 +112,7 @@ public class SkullAudio extends Activity {
 					sampleRate = rawAudio.readInt();
 					channelConfig = rawAudio.readInt();
 					format = rawAudio.readInt();
-					track = new AudioTrack(AudioManager.USE_DEFAULT_STREAM_TYPE, sampleRate, channelConfig, format, 1024*16, AudioTrack.MODE_STREAM);
+					track = new AudioTrack(AudioManager.USE_DEFAULT_STREAM_TYPE, sampleRate, channelConfig, format, AudioTrack.getMinBufferSize(sampleRate, channelConfig, format), AudioTrack.MODE_STREAM);
 				}
 				else
 				{

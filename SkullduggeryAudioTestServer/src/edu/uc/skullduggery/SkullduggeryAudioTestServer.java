@@ -51,22 +51,18 @@ public class SkullduggeryAudioTestServer {
 	}
 	
 	public static void main(String[] args) {
-		if(args.length <= 1)
+		if(args.length < 1)
 		{
 			System.out.println("Usage: [PROG_NAME] [FILE]");
 			return;
 		}
-		File f = new File(args[1]);
+		System.out.println(args[0]);
+		File f = new File(args[0]);
 		
 		try{
 			ServerSocket s = new ServerSocket(9002);
-			if(!f.exists())
+			if(f.createNewFile())
 			{
-				if(!f.canWrite())
-				{
-					System.out.println("Can't write the file. Exiting.");
-					return;
-				}
 				//create the file
 				RecordFileFromClient(f,s);
 			}
