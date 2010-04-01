@@ -10,6 +10,12 @@ import org.xiph.speex.*;
 
 import java.io.*;
 
+/*
+ * Important:
+ * You MUST have the file /sdcard/audio (raw PCM file) and
+ * the correct parameters for sampleRate, channels, etc. specified below.
+ */
+
 public class SpeexTest extends Activity {
 	
 	final Handler h = new Handler(){
@@ -38,6 +44,11 @@ public class SpeexTest extends Activity {
         fout.open("/sdcard/audio.spx");
         h.sendMessage(Message.obtain(h, 0, "init SpeexEncoder\n"));
         
+        final int sampleRate = 8000;
+        final int channels = 1;
+        final int sampleSizeBits = 16;
+        //If more than 8-bit should always be LITTLE_ENDIAN
+        
         SpeexEncoder enc = new SpeexEncoder();
         //1 packet NB = 160 samples = 20 ms
         //1 packet WB = 320 samples = 20 ms
@@ -47,13 +58,14 @@ public class SpeexTest extends Activity {
         		//1 - WideBand(16khz)
         		//2-UltraWideBand(32khz) 
         		5,//quality level 1-10
-        		44100,//sample rate
-        		2);//number of channels
+        		sampleRate,
+        		channels);
         
         // Raw block size is 160 samples for NB,
         // times 2 for stereo
         // times (16/8) = 2 for 16-bit
-        final int rawBlockSize = enc.getFrameSize() * 2 * (16 / 8);
+        final int rawBlockSize = enc.getFrameSize()
+        * channels * (sampleSizeBits / 8);
         
 //        final int framesPerPacket = 1;//always 1 for now (it's the default)
         
