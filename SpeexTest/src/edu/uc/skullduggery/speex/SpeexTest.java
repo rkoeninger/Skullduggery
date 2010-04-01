@@ -2,6 +2,7 @@ package edu.uc.skullduggery.speex;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.os.*;
 //import android.view.*;
 import android.widget.*;
 
@@ -10,19 +11,32 @@ import org.xiph.speex.*;
 import java.io.*;
 
 public class SpeexTest extends Activity {
+	
+	final Handler h = new Handler(){
+		public void handleMessage(Message m){
+			if (m.what == 0){
+				((TextView) findViewById(R.id.textView1)
+				).append((String) m.obj);
+			}
+		}
+		
+	};
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
-        TextView textView = (TextView) findViewById(R.id.textView1);
+        
+        
+        new Thread(new Runnable(){public void run(){
+        
         try{
-        textView.append("opening file streams\n");
+        h.sendMessage(Message.obtain(h, 0, "opening file streams\n"));
 //        FileInputStream fin = new FileInputStream("/sdcard/rawaudio");
         DataInputStream fin =
         new DataInputStream(new FileInputStream("/sdcard/audio"));
 //        FileOutputStream fout = new FileOutputStream("/sdcard/audio.spx");
         AudioFileWriter fout = new OggSpeexWriter();
         fout.open("/sdcard/audio.spx");
-        textView.append("init SpeexEncoder\n");
+        h.sendMessage(Message.obtain(h, 0, "init SpeexEncoder\n"));
         
         SpeexEncoder enc = new SpeexEncoder();
         //1 packet NB = 160 samples = 20 ms
@@ -43,8 +57,9 @@ public class SpeexTest extends Activity {
         
 //        final int framesPerPacket = 1;//always 1 for now (it's the default)
         
-        textView.append("raw block size=");
-        textView.append(Integer.toString(rawBlockSize) + "\n");
+        h.sendMessage(Message.obtain(h, 0, "raw block size="));
+        h.sendMessage(Message.obtain(h, 0,
+        Integer.toString(rawBlockSize) + "\n"));
         int everySoMany = 0; //used for debug output so
                                //doesn't show for every loop iteration
 
@@ -53,6 +68,8 @@ public class SpeexTest extends Activity {
         
         byte[] bbuf = new byte[1024];
         int bytesRead = 0;
+        
+        long delay1, delay2, delay3, delay4, delayTotal;
 
         try {
             // read until we get to EOF
@@ -66,18 +83,33 @@ public class SpeexTest extends Activity {
 //                enc.processData(bbuf, i*rawBlockSize, rawBlockSize);
               
               if ((everySoMany++ % 10) == 0){
-          	      textView.append(rawBlockSize + " bytes to process\n");
+            	  h.sendMessage(Message.obtain(
+            	  h, 0, rawBlockSize + " bytes to process\n"));
               }
               
+              delay1=System.currentTimeMillis();
+          
               // processData() assumes 16-bit samples are little-endian
               enc.processData(bbuf, 0, rawBlockSize);
               //why does this line get stopped up?
               
+              delay2=System.currentTimeMillis();
+              
               if (((everySoMany-1) % 10) == 0){
-            	  textView.append("process done\n");
+            	  h.sendMessage(Message.obtain(h, 0, "process done\n"));
               }
               
+              delay3=System.currentTimeMillis();
+              
               bytesRead = enc.getProcessedData(bbuf, 0);
+              
+              delay4=System.currentTimeMillis();
+              
+              if (((everySoMany-1) % 10) == 0){
+            	  h.sendMessage(Message.obtain(h, 0, "proc+retreval time:"
+            	   +  ((delay2-delay1)+(delay4-delay3))  +"\n"));
+              }
+              
               if (bytesRead > 0) {
             	
             	/*this line gets replaced with a paraphrase of code
@@ -92,14 +124,15 @@ public class SpeexTest extends Activity {
         fin.close();
         
         
-        Toast.makeText(this, "DONE", Toast.LENGTH_LONG);
-        
         
 //        new JSpeexEnc().encode(
 //        new File("/sdcard/audio.wav"), new File("/sdcard/audio.spx"));
         }catch (IOException iexc){
-        	textView.append(iexc.toString());
+        	h.sendMessage(Message.obtain(h, 0, iexc.toString()));
         }
+        
+        
+        }}).start();
 
     }
 }
