@@ -28,7 +28,9 @@ public class SkullduggeryAudioTestServer {
 			DataOutputStream dataSock = new DataOutputStream(clientSock.getOutputStream());
 			while((dataLength = fin.read(dataBuffer)) > 0)
 			{
+				System.out.println("Writing data from buffer.");
 				dataSock.write(dataBuffer, 0, dataLength);
+				System.out.println("Data written to buffer.");
 			}
 			dataSock.close();
 			clientSock.close();

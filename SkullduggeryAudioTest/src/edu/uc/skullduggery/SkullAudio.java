@@ -51,7 +51,7 @@ public class SkullAudio extends Activity {
     		try
     		{
     			android.util.Log.d("SkullAudio", "Beginning audio recording thread.");
-	    		int source = MediaRecorder.AudioSource.DEFAULT;
+	    		int source = MediaRecorder.AudioSource.VOICE_RECOGNITION;
 	    		int bitRate = 8000; //11025, 22050, 44100
 	    		int channelConfig = AudioFormat.CHANNEL_IN_MONO;
 	    		int encoding = AudioFormat.ENCODING_PCM_16BIT;
@@ -132,7 +132,7 @@ public class SkullAudio extends Activity {
 					android.util.Log.d("SkullAudio", "Audio format:" + Integer.toString(format));
 					
 					android.util.Log.d("SkullAudio", "Initializing track");
-					track = new AudioTrack(AudioManager.USE_DEFAULT_STREAM_TYPE, sampleRate, channelConfig, format, AudioTrack.getMinBufferSize(sampleRate, channelConfig, format), AudioTrack.MODE_STREAM);
+					track = new AudioTrack(AudioManager.STREAM_VOICE_CALL, sampleRate, channelConfig, format, AudioTrack.getMinBufferSize(sampleRate, channelConfig, format), AudioTrack.MODE_STREAM);
 
 				}
 				else
