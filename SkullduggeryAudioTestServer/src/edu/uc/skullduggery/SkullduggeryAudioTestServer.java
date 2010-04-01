@@ -18,9 +18,11 @@ public class SkullduggeryAudioTestServer {
 	
 	private static void PlayFileToClients(File f, ServerSocket servSock) throws IOException
 	{
+		System.out.println("Playing audio");
 		FileInputStream fin = new FileInputStream(f);
 		while(true){
 			Socket clientSock = servSock.accept();
+			System.out.println("Playing audio to connected duder.");
 			byte[] dataBuffer = new byte[1024];
 			int dataLength;
 			DataOutputStream dataSock = new DataOutputStream(clientSock.getOutputStream());
@@ -30,24 +32,30 @@ public class SkullduggeryAudioTestServer {
 			}
 			dataSock.close();
 			clientSock.close();
-			fin.reset();
+			System.out.println("Done playing Audio to connected duder.");
 		}
+
 	}
 	
 	private static void RecordFileFromClient(File f, ServerSocket servSock) throws IOException
 	{
+		System.out.println("Recording something from connected client");
 		FileOutputStream fout = new FileOutputStream(f);
 		Socket clientSock = servSock.accept();
+		System.out.println("Client connected.");
 		byte[] dataBuffer = new byte[1024];
 		int dataLength;
 		DataInputStream dataSock = new DataInputStream(clientSock.getInputStream());
 		while((dataLength = dataSock.read(dataBuffer)) > 0)
 		{
+			System.out.println("Client sent audio to us.");
 			fout.write(dataBuffer, 0 , dataLength);
+			System.out.println("Audio written to file.");
 		}
 		fout.flush();
 		fout.close();
 		clientSock.close();
+		System.out.println("Done recording from connected client");
 	}
 	
 	public static void main(String[] args) {
@@ -63,6 +71,7 @@ public class SkullduggeryAudioTestServer {
 			ServerSocket s = new ServerSocket(9002);
 			if(f.createNewFile())
 			{
+				System.out.println("Creating new file");
 				//create the file
 				RecordFileFromClient(f,s);
 			}

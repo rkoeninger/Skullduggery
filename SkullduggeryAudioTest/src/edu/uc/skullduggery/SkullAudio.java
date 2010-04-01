@@ -45,12 +45,17 @@ public class SkullAudio extends Activity {
             		new OnRecordPositionUpdateListener() {    					
     					@Override
     					public void onPeriodicNotification(AudioRecord recorder) {
+    						android.util.Log.d("SkullAudio", "Periodic Listener enperioded.");
+    				
     						byte[] audioData = new byte[1024];
     						int len = 0;
     						
     						while((len = recorder.read(audioData, 0, audioData.length)) > 0)
+
     						{
     							try {
+    	    						android.util.Log.d("SkullAudio", "Read " + len + " bytes from audio.");
+
     								write(audioData, len);
     							} catch (IOException e) {
     								e.printStackTrace();
@@ -80,6 +85,7 @@ public class SkullAudio extends Activity {
     						onPeriodicNotification(recorder);
     					}
     				});
+            SoundRecorder.setPositionNotificationPeriod(1);
             SoundRecorder.startRecording();
             
     		try{
@@ -134,12 +140,10 @@ public class SkullAudio extends Activity {
 					if(track.getPlayState() != AudioTrack.PLAYSTATE_PLAYING){
 						track.play();
 					}
-
 				}
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				try {
-				
 					rawAudio.close();
 					soundSock.close();
 				}
@@ -147,15 +151,14 @@ public class SkullAudio extends Activity {
 					// TODO Auto-generated catch block
 				}
 			}
-    		
     	}
     	
     	public void write(byte[] audioData, int length) throws IOException
     	{
-    		DataOutputStream rawAudio;
+//    		DataOutputStream rawAudio;
     		OutputStream soundSockOutput = soundSock.getOutputStream();
-    		rawAudio = new DataOutputStream(soundSockOutput);
-    		rawAudio.write(audioData, 0, length);
+  //  		rawAudio = new DataOutputStream(soundSockOutput);
+    		soundSockOutput.write(audioData, 0, length);
     	}
     }
 }
