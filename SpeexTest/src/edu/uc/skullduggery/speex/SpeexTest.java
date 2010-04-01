@@ -88,7 +88,7 @@ public class SpeexTest extends Activity {
         byte[] bbuf = new byte[1024];
         int bytesRead = 0;
         
-        long delay1, delay2, delay3, delay4, delayTotal;
+        long delay1, delay2, delay3, delay4, delayTotal = 0;
 
         try {
             // read until we get to EOF
@@ -123,6 +123,7 @@ public class SpeexTest extends Activity {
               bytesRead = enc.getProcessedData(bbuf, 0);
               
               delay4=System.currentTimeMillis();
+              delayTotal += (delay2-delay1)+(delay4-delay3);
               
               if (((everySoMany-1) % 10) == 0){
             	  h.sendMessage(Message.obtain(h, 0, "proc+retreval time:"
@@ -143,7 +144,9 @@ public class SpeexTest extends Activity {
               dec.processData(bbuf, 0, bytesRead);
               bytesRead = dec.getProcessedData(bbuf, 0);
               delay2=System.currentTimeMillis();
-
+              
+              delayTotal += (delay2-delay1);
+              
               if (((everySoMany-1) % 10) == 0){
             	  h.sendMessage(Message.obtain(h, 0, "decode time:"
         			  +  (delay2-delay1)  +"\n"));
@@ -154,6 +157,8 @@ public class SpeexTest extends Activity {
             }
         }
         catch (EOFException e) {}
+  	  	h.sendMessage(Message.obtain(h, 0, "decode TOTAL:"
+			  +  delayTotal  +"\n"));
         fout.close(); 
         fin.close();
         out2.close();
