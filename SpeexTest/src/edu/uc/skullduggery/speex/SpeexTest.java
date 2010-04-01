@@ -42,6 +42,8 @@ public class SpeexTest extends Activity {
 //        FileOutputStream fout = new FileOutputStream("/sdcard/audio.spx");
         AudioFileWriter fout = new OggSpeexWriter();
         fout.open("/sdcard/audio.spx");
+        DataOutputStream out2 =
+        new DataOutputStream(new FileOutputStream("/sdcard/audio2"));
         h.sendMessage(Message.obtain(h, 0, "init SpeexEncoder\n"));
         
         final int sampleRate = 8000;
@@ -60,6 +62,11 @@ public class SpeexTest extends Activity {
         		5,//quality level 1-10
         		sampleRate,
         		channels);
+        
+        SpeexDecoder dec = new SpeexDecoder();
+        //for the Decoder, sampleRate and channels refer to the output
+        //format, but we'll make it the same so we can compare in and out files
+        dec.init(0, sampleRate, channels, false);
         
         // Raw block size is 160 samples for NB,
         // times 2 for stereo
@@ -129,11 +136,23 @@ public class SpeexTest extends Activity {
                 fout.writePacket(bbuf, 0, bytesRead);
                 /*this line gets replaced with other code*/
               }
+              
+              // Decode the data again and we should get the
+              // original signal (lower quality cause of speex of course)
+              delay1=System.currentTimeMillis();
+              dec.processData(bbuf, 0, bytesRead);
+              bytesRead = dec.getProcessedData(bbuf, 0);
+              delay2=System.currentTimeMillis();
+        	  h.sendMessage(Message.obtain(h, 0, "decode time:"
+               	   +  (delay2-delay1)  +"\n"));
+              out2.write(bbuf, 0, bytesRead);
+              
             }
         }
         catch (EOFException e) {}
         fout.close(); 
         fin.close();
+        out2.close();
         
         
         
