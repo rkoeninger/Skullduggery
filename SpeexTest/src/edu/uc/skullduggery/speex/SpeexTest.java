@@ -59,7 +59,7 @@ public class SpeexTest extends Activity {
         		//0 for NarrowBand(8khz)
         		//1 - WideBand(16khz)
         		//2-UltraWideBand(32khz) 
-        		5,//quality level 1-10
+        		1,//quality level 1-10
         		sampleRate,
         		channels);
         
@@ -143,8 +143,12 @@ public class SpeexTest extends Activity {
               dec.processData(bbuf, 0, bytesRead);
               bytesRead = dec.getProcessedData(bbuf, 0);
               delay2=System.currentTimeMillis();
-        	  h.sendMessage(Message.obtain(h, 0, "decode time:"
-               	   +  (delay2-delay1)  +"\n"));
+
+              if (((everySoMany-1) % 10) == 0){
+            	  h.sendMessage(Message.obtain(h, 0, "decode time:"
+        			  +  (delay2-delay1)  +"\n"));
+              }
+              
               out2.write(bbuf, 0, bytesRead);
               
             }
