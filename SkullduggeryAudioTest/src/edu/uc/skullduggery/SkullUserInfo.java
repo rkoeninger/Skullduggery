@@ -45,7 +45,7 @@ public class SkullUserInfo implements Serializable {
 		_pubKeyHash = mac.doFinal(pubKey);
 	}
 	
-	public void saveUserInfo(Bundle savedInstanceState, SkullUserInfo u)
+	public static void saveUserInfo(Bundle savedInstanceState, SkullUserInfo u)
 	{
 		savedInstanceState.putSerializable(u._number,u);
 	}

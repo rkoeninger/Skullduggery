@@ -18,15 +18,17 @@ import java.security.NoSuchAlgorithmException;
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.KeyGenerator;
-import javax.crypto.Mac;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
+
+import edu.uc.skullduggery.SkullMessageFactory.TrickeryException;
 
 public class SkullAudio extends Activity {
 
 	private final String HMAC = "HmacSHA1";
 	private final String AES = "AES";
+	private final int MESSAGE_SIZE = 4096;
 	
 	private ListenThread T;
 	private SpeakThread S;
@@ -91,7 +93,7 @@ public class SkullAudio extends Activity {
 	    		//DOS.writeInt(channelConfig);
 	    		DOS.writeInt(encoding);
 	    		
-	    		byte[] buffer = new byte[1024];
+	    		byte[] buffer = new byte[MESSAGE_SIZE];
 
     			android.util.Log.d("SkullAudio", "Initializing recorder.");
 	    		AudioRecord SoundRecorder = new AudioRecord(source, bitRate, channelConfig, encoding, bufSize);
@@ -106,6 +108,7 @@ public class SkullAudio extends Activity {
 	    			while(len < buffer.length)
 	    				len += SoundRecorder.read(buffer, len, buffer.length - len);
 	    			SkullMessage m = SMF.createMessage(buffer);
+	    			
 	    			DOS.write(m.getHashedData());
 
 	    			android.util.Log.d("SkullAudio", "Recorded data written.");
@@ -155,8 +158,8 @@ public class SkullAudio extends Activity {
     			android.util.Log.d("SkullAudio", "Initializing the reading stream");
     			DataInputStream rawAudio = new DataInputStream(soundSock.getInputStream());
 				
-				byte[] buf = new byte[1024];
-				byte[] keybuf = new byte[128/8];
+				byte[] buf;
+				byte[] keybuf = new byte[16];
 				SecretKey cryptoKey, hashKey;
 				
 				int sampleRate, channelConfig, format;
@@ -164,9 +167,9 @@ public class SkullAudio extends Activity {
 				
 				if(soundSock.isConnected() && !soundSock.isClosed())
 				{
-					rawAudio.read(keybuf, 0, 128/8);
+					rawAudio.readFully(keybuf);
 					cryptoKey = new SecretKeySpec(keybuf, AES);
-					rawAudio.read(keybuf, 0, 128/8);
+					rawAudio.readFully(keybuf);
 					hashKey = new SecretKeySpec(keybuf, HMAC);
 					
 					android.util.Log.d("SkullAudio", "Reading sample rate");
@@ -195,22 +198,21 @@ public class SkullAudio extends Activity {
 				android.util.Log.d("SkullAudio", "Track initialized. Playing back data.");
 				
 				SkullMessageFactory SMF = new SkullMessageFactory(cryptoKey, hashKey);
-				
+				buf = new byte[MESSAGE_SIZE + SMF.getHashSize()];
+			
 				while(soundSock.isConnected() && ! soundSock.isClosed())
 				{
 					android.util.Log.d("SkullAudio", "Beginning read");
 					
-					int bytesRead = 0;
-					while(bytesRead < buf.length + 16)
-						bytesRead += rawAudio.read(buf, bytesRead, buf.length - bytesRead);
+					rawAudio.readFully(buf);
 					
+					SkullMessage m = SMF.readMessage(buf);
 					
-					track.write(buf, 0, bytesRead);
+					track.write(m.getData(), 0, m.getData().length);
 					if(track.getPlayState() != AudioTrack.PLAYSTATE_PLAYING){
 						track.play();
 					}
 					android.util.Log.d("SkullAudio", "Written to buffer");
-					
 				}
 				android.util.Log.d("SkullAudio", "Done. Closing up.");
 				
@@ -220,11 +222,30 @@ public class SkullAudio extends Activity {
     		catch (IOException e)
     		{
     			android.util.Log.e("SkullAudio", "Error when playing audio.");
-    			android.util.Log.e("SkullAudio", e.getMessage());
+    			android.util.Log.e("SkullAudio", "Error when reading from stream.");
+    			e.printStackTrace();
     		} catch (NoSuchAlgorithmException e) {
+    			android.util.Log.e("SkullAudio", "Bad encryption algorithm spec");
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} catch (NoSuchPaddingException e) {
+				android.util.Log.e("SkullAudio","Something weird with the padding.");
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (InvalidKeyException e) {
+				android.util.Log.e("SkullAudio","Wrong key for this algorithm.");
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (IllegalBlockSizeException e) {
+				android.util.Log.e("SkullAudio","Bad block size for algorithm.");
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (BadPaddingException e) {
+				android.util.Log.e("SkullAudio", "Something's messed up with padding.");
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (TrickeryException e) {
+				android.util.Log.e("SkullAudio","Bad hash on message.");
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}

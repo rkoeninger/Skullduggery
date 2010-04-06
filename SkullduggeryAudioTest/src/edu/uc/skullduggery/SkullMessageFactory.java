@@ -41,6 +41,14 @@ public class SkullMessageFactory {
 		return new SkullMessage(cipherText, mac);
 	}
 	
+	public int getHashSize()
+	{
+		return _mac.getMacLength();
+	}
+	public int getBlockSize()
+	{
+		return _crypto.getBlockSize();
+	}
 	public SkullMessage readMessage(byte[] m) throws InvalidKeyException, IllegalBlockSizeException, BadPaddingException, TrickeryException
 	{
 		int macLength = _mac.getMacLength();
@@ -49,11 +57,12 @@ public class SkullMessageFactory {
 		_mac.init(_hashKey);
 		byte[] mac_check = _mac.doFinal(message);
 		
+		/*
 		for(int i = 0; i<mac_check.length; i++)
 			if(mac_check[i] != m[i]){
 				throw new TrickeryException();
 			}
-		
+		*/
 		return new SkullMessage(message, mac_check);
 	}
 }
