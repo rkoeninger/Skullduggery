@@ -8,14 +8,14 @@ import android.media.*;
 import java.io.*;
 import java.net.*;
 
-public class CommTest extends Activity {
+public class CommTest extends Activity{
 
     final int bitRate = 8000;
     final int channelConfig = AudioFormat.CHANNEL_IN_MONO;
     final int encoding = AudioFormat.ENCODING_PCM_16BIT;
     
     // Make sure ports are forwarded between emulators before starting call
-    final String ip = "10.0.0.2";
+    final String ip = "10.0.2.2";
     final int port = 9002;
 	
 	private AcceptThread acceptThread;
@@ -34,7 +34,7 @@ public class CommTest extends Activity {
 	};
 	
     @Override
-    public void onCreate(Bundle savedInstanceState) {
+    public void onCreate(Bundle savedInstanceState){
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
         
@@ -76,8 +76,16 @@ public class CommTest extends Activity {
     			ServerSocket waitSocket = new ServerSocket(port);
     			waitSocket.setSoTimeout(100); // wait 100 ms before looping
     			while (commSocket == null){
-    				commSocket = waitSocket.accept();
-    				if ((listenThread != null) || (talkThread != null))
+    				
+    				try{
+    					commSocket = waitSocket.accept();
+    				}catch (SocketTimeoutException ste){
+    					// Consider the exception throw the same as
+    					// a normal function return
+    				}
+    				
+    				if ((listenThread != null) || (talkThread != null) ||
+    				(connectThread != null))
     					return;
     			}
     			listenThread = new ListenThread();
