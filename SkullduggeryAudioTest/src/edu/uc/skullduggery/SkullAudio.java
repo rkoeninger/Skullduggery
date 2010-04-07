@@ -186,7 +186,7 @@ public class SkullAudio extends Activity {
 					android.util.Log.d("SkullAudio", "Audio format:" + Integer.toString(format));
 					
 					android.util.Log.d("SkullAudio", "Initializing track");
-					track = new AudioTrack(AudioManager.STREAM_VOICE_CALL, sampleRate, channelConfig, format, AudioTrack.getMinBufferSize(sampleRate, channelConfig, format), AudioTrack.MODE_STREAM);
+					track = new AudioTrack(AudioManager.STREAM_VOICE_CALL, sampleRate, channelConfig, format, AudioTrack.getMinBufferSize(sampleRate, channelConfig, format)*32, AudioTrack.MODE_STREAM);
 
 				}
 				else
