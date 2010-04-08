@@ -221,9 +221,15 @@ public class CommTest extends Activity{
             	sampleRate, channelConfigOut, encoding),
             	AudioTrack.MODE_STREAM);
 
+            	
+            	FileOutputStream fos =
+            	new FileOutputStream("/sdcard/dbgoutraw");
+            	
+            	
             	while (commSocket.isConnected() && ! commSocket.isClosed()){
             		if ((bytesRead = in.read(buf, 0, buf.length)) >= 0)
-            			aout.write(buf, 0, bytesRead);
+//            			aout.write(buf, 0, bytesRead);
+            			fos.write(buf, 0, bytesRead);
             		else break;
                     if (aout.getPlayState() != AudioTrack.PLAYSTATE_PLAYING){
                         aout.play();
