@@ -10,8 +10,9 @@ import java.net.*;
 
 public class CommTest extends Activity{
 
-    final int bitRate = 8000;
-    final int channelConfig = AudioFormat.CHANNEL_IN_MONO;
+    final int sampleRate = 8000;
+    final int channelConfigIn = AudioFormat.CHANNEL_IN_MONO;
+    final int channelConfigOut = AudioFormat.CHANNEL_OUT_MONO;
     final int encoding = AudioFormat.ENCODING_PCM_16BIT;
     
     // Make sure ports are forwarded between emulators before starting call
@@ -33,10 +34,62 @@ public class CommTest extends Activity{
 		}
 	};
 	
+	public void onSaveInstanceState(Bundle out){
+        android.util.Log.i("CommTest", "onSaveInstanceState");
+        
+		out.putBoolean("talking", commSocket != null);
+	}
+	
+	public void onRestoreInstanceState(Bundle savedInstanceState){
+        final Button callButton = ((Button) findViewById(R.id.callButton));
+        final Button acceptButton = ((Button) findViewById(R.id.acceptButton));
+        
+        android.util.Log.i("CommTest", "onRestoreInstanceState");
+        android.util.Log.i("CommTest", "    bundle is " +
+                (savedInstanceState == null ? "NULL" : "not null"));
+                
+        
+        if (savedInstanceState != null){
+	        if (savedInstanceState.getBoolean("talking", false)){
+	    		callButton.setEnabled(false);
+	    		acceptButton.setEnabled(false);
+	        }
+        }
+	}
+	
+	public void onStart(){
+		super.onStart();
+        android.util.Log.i("CommTest", "onStart");
+	}
+
+	public void onStop(){
+		super.onStop();
+        android.util.Log.i("CommTest", "onStop");
+	}
+	
+	public void onPause(){
+		super.onPause();
+        android.util.Log.i("CommTest", "onPause");
+	}
+	
+	public void onResume(){
+		super.onResume();
+        android.util.Log.i("CommTest", "onResume");
+	}
+	
+	public void onDestroy(){
+		super.onDestroy();
+        android.util.Log.i("CommTest", "onDestroy");
+	}
+	
     @Override
     public void onCreate(Bundle savedInstanceState){
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
+
+        android.util.Log.i("CommTest", "onCreate");
+        android.util.Log.i("CommTest", "    bundle is " +
+        (savedInstanceState == null ? "NULL" : "not null"));
         
         final Button callButton = ((Button) findViewById(R.id.callButton));
         final Button acceptButton = ((Button) findViewById(R.id.acceptButton));
@@ -70,31 +123,44 @@ public class CommTest extends Activity{
     	private int port;
     	public AcceptThread(int port){
     		this.port = port;
+    		android.util.Log.d("CommTest", "accept thread created");
     	}
     	public void run(){
     		try{
+    			android.util.Log.d("CommTest", "creating server socket");
     			ServerSocket waitSocket = new ServerSocket(port);
-    			waitSocket.setSoTimeout(100); // wait 100 ms before looping
+    			waitSocket.setSoTimeout(10000); // wait 100 ms before looping
+    			Socket newConnection = null;
     			while (commSocket == null){
-    				
     				try{
-    					commSocket = waitSocket.accept();
+    					android.util.Log.d("CommTest", "attempt socket wait");
+    					newConnection = waitSocket.accept();
     				}catch (SocketTimeoutException ste){
     					// Consider the exception throw the same as
-    					// a normal function return
+    					// a normal function return with val "false"
     				}
     				
     				if ((listenThread != null) || (talkThread != null) ||
-    				(connectThread != null))
+    				(connectThread != null) || (acceptThread == null)){
+    	    			android.util.Log.d("CommTest",
+    	    			"accept thread ending early");
     					return;
+    				}
+    				else if (newConnection != null){
+    					commSocket = newConnection;
+    					android.util.Log.d("CommTest", "socket connected");
+    				}
     			}
+    			android.util.Log.d("CommTest", "starting threads");
     			listenThread = new ListenThread();
     			talkThread = new TalkThread();
     			listenThread.start();
     			talkThread.start();
+    			android.util.Log.d("CommTest", "threads started");
     			acceptThread = null;
+    			android.util.Log.d("CommTest", "accept thread end");
     		}catch (Exception e){
-    			h.sendMessage(Message.obtain(h, 0, "error in accept thread"));
+    			android.util.Log.e("CommTest", "error in accept thread");
     			throw new Error(e);
     		}
     	}
@@ -106,17 +172,23 @@ public class CommTest extends Activity{
     	public ConnectThread(String ip, int port){
     		this.ip = ip;
     		this.port = port;
+    		android.util.Log.d("CommTest", "connect thread created");
     	}
     	public void run(){
     		try{
+    			android.util.Log.d("CommTest", "attempting socket connect");
     			commSocket = new Socket(ip, port);
+    			android.util.Log.d("CommTest", "socket connected");
+    			android.util.Log.d("CommTest", "starting threads");
     			listenThread = new ListenThread();
     			talkThread = new TalkThread();
     			listenThread.start();
     			talkThread.start();
+    			android.util.Log.d("CommTest", "threads started");
     			connectThread = null;
+    			android.util.Log.d("CommTest", "connect thread end");
     		}catch (Exception e){
-    			h.sendMessage(Message.obtain(h, 0, "connect fail"));
+    			android.util.Log.e("CommTest", "connect fail");
     			throw new Error(e);
     		}
     	}
@@ -124,6 +196,9 @@ public class CommTest extends Activity{
     
     public class ListenThread extends Thread{
     	public void run(){
+    		
+    		android.util.Log.d("CommTest", "LISTEN thread started");
+    		
             int bytesRead = 0;
             
             AudioTrack aout = null;
@@ -134,15 +209,16 @@ public class CommTest extends Activity{
             	commSocket.getInputStream());
 
             	// These statements not needed as format is fixed
-            	//bitRate = in.readInt();
+            	//sampleRate = in.readInt();
             	//channelConfig = in.readInt();
             	//encoding = in.readInt();
             	
             	byte[] buf = new byte[1024];
             	
             	aout = new AudioTrack(AudioManager.STREAM_VOICE_CALL,
-            	bitRate, channelConfig, encoding,
-            	AudioTrack.getMinBufferSize(bitRate, channelConfig, encoding),
+            	sampleRate, channelConfigOut, encoding,
+            	AudioTrack.getMinBufferSize(
+            	sampleRate, channelConfigOut, encoding),
             	AudioTrack.MODE_STREAM);
 
             	while (commSocket.isConnected() && ! commSocket.isClosed()){
@@ -160,8 +236,8 @@ public class CommTest extends Activity{
             	
             }catch (Exception e){
             	if (! (e instanceof EOFException)){
-            		h.sendMessage(Message.obtain(h, 0,
-            		"io error in listen thread"));
+            		android.util.Log.e("CommTest",
+            		"io error in listen thread");
             		throw new Error(e);
             	}
             }
@@ -170,9 +246,12 @@ public class CommTest extends Activity{
     
     public class TalkThread extends Thread{
     	public void run(){
+    		
+    		android.util.Log.d("CommTest", "TALK thread started");
+    		
     		final int source = MediaRecorder.AudioSource.VOICE_RECOGNITION;
             final int bufSize = AudioRecord.getMinBufferSize(
-            bitRate, channelConfig, encoding);
+            sampleRate, channelConfigIn, encoding);
             int bytesRead = 0;
             
             AudioRecord ain = null;
@@ -183,28 +262,40 @@ public class CommTest extends Activity{
             	commSocket.getOutputStream());
             	
             	// These statements not needed as format is fixed
-            	//out.writeInt(bitRate);
+            	//out.writeInt(sampleRate);
                 //out.writeInt(channelConfig);
                 //out.writeInt(encoding);
             	
             	byte[] buf = new byte[1024];
             	
             	ain = new AudioRecord(
-            	source, bitRate, channelConfig, encoding, bufSize);
+            	source, sampleRate, channelConfigIn, encoding, bufSize);
             	ain.startRecording();
+            	
+            	//random freq between 300 and 500 hz
+            	final int FREQ = 300+(new java.util.Random().nextInt(200));
+            	android.util.Log.d("CommTest", "talkthread freq=" + FREQ);
             	
                 while (ain.getRecordingState() ==
                 AudioRecord.RECORDSTATE_RECORDING && commSocket.isConnected()){
-                	if ((bytesRead = ain.read(buf, 0, buf.length)) >= 0)
-                		out.write(buf, 0, bytesRead);
-                	else
-                		ain.stop();
+//                	if ((bytesRead = ain.read(buf, 0, buf.length)) >= 0)
+//                		out.write(buf, 0, bytesRead);
+//                	else
+//                		ain.stop();
+                	short sample;
+                	for (int x=0;x<buf.length;x+=2){
+                		sample=(short)(32767*Math.sin(
+                			(2*3.1415926*FREQ)/sampleRate
+                		));
+                		out.write(sample&0xff);
+                		out.write((sample>>8)&0xff);
+                	}
                 }
             	
             }catch (IOException e){
             	if (! (e instanceof EOFException)){
-            		h.sendMessage(Message.obtain(h, 0,
-            		"io error in talk thread"));
+            		android.util.Log.e("CommTest",
+            		"io error in talk thread");
             		throw new Error(e);
             	}
             }
@@ -213,10 +304,9 @@ public class CommTest extends Activity{
             	if (ain.getRecordingState() ==
             	AudioRecord.RECORDSTATE_RECORDING)
             		ain.stop();
-            h.sendMessage(Message.obtain(h, 0, "recording stopped"));
+    		android.util.Log.d("CommTest", "recording stopped");
             talkThread = null;
             
     	}
     }
-    
 }
