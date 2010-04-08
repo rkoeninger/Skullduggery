@@ -7,6 +7,7 @@ import android.media.AudioRecord;
 import android.media.AudioTrack;
 import android.media.MediaRecorder;
 import android.os.Bundle;
+import android.util.Log;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -22,17 +23,15 @@ import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
-import edu.uc.skullduggery.SkullMessageFactory.TrickeryException;
-
 public class SkullAudio extends Activity {
 
 	private final String HMAC = "HmacSHA1";
 	private final String AES = "AES";
-	private final int MESSAGE_SIZE = 4096;
+	private final int MESSAGE_SIZE = 1024;
 	
-	private ListenThread T;
-	private SpeakThread S;
-	private Socket soundSock;
+	private ListenThread _listenThread;
+	private SpeakThread _speakThread;
+	private Socket _soundSock;
     /** Called when the activity is first created. */
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -41,11 +40,11 @@ public class SkullAudio extends Activity {
         setContentView(R.layout.main);
         
         try {
-			soundSock = new Socket("10.0.2.2", 9002);
-			T = new ListenThread(soundSock);
-	        S = new SpeakThread(soundSock);
-	        T.start();
-	        S.start();
+			_soundSock = new Socket("10.0.2.2", 9002);
+			_listenThread = new ListenThread(_soundSock);
+	        _speakThread = new SpeakThread(_soundSock);
+	        _listenThread.start();
+	        _speakThread.start();
 		} catch (UnknownHostException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -67,75 +66,98 @@ public class SkullAudio extends Activity {
     	{
     		try
     		{
+    			//TODO: subroutine for this. Invoking rule-of-3 for now.
     			KeyGenerator cryptoGen = KeyGenerator.getInstance(AES);
-    			KeyGenerator hashGen = KeyGenerator.getInstance(HMAC);
     			cryptoGen.init(128);
-    			hashGen.init(128);
     			SecretKey cryptoKey = cryptoGen.generateKey();
+    			SecretKeySpec cryptoKeySpec = new SecretKeySpec(cryptoKey.getEncoded(), AES);
+    			Log.d("SkullAudio", "XMIT: Sending crypto key:" + Util.byteArrayToString(cryptoKeySpec.getEncoded()));
+    			KeyGenerator hashGen = KeyGenerator.getInstance(HMAC);
+    			hashGen.init(128);
     			SecretKey hashKey = hashGen.generateKey();
+    			SecretKeySpec hashKeySpec = new SecretKeySpec(hashKey.getEncoded(), HMAC);
+    			Log.d("SkullAudio", "XMIT: Sending hash key:" + Util.byteArrayToString(hashKeySpec.getEncoded()));
+        		
+    			SkullMessageFactory SMF = new SkullMessageFactory(cryptoKeySpec, hashKeySpec);
     			
-    			SkullMessageFactory SMF = new SkullMessageFactory(cryptoKey, hashKey);
-    			
-    			android.util.Log.d("SkullAudio", "Beginning audio recording thread.");
-	    		int source = MediaRecorder.AudioSource.VOICE_RECOGNITION;
-	    		int bitRate = 8000; //11025, 22050, 44100
-	    		int channelConfig = AudioFormat.CHANNEL_IN_MONO;
-	    		int encoding = AudioFormat.ENCODING_PCM_16BIT;
-	    		int bufSize = AudioRecord.getMinBufferSize(bitRate, channelConfig, encoding)*8;
-
-    			android.util.Log.d("SkullAudio", "Initializing output stream.");
+    			Log.d("SkullAudio", "XMIT: Beginning audio recording thread.");
+	    		int audioSource = MediaRecorder.AudioSource.VOICE_RECOGNITION;
+	    		int audioBitRate = 8000; //11025, 22050, 44100
+	    		int audioChannelConfig = AudioFormat.CHANNEL_IN_MONO;
+	    		int audioEncoding = AudioFormat.ENCODING_PCM_16BIT;
+	    		int audioBufferSize = AudioRecord.getMinBufferSize(audioBitRate, audioChannelConfig, audioEncoding)*8;
+	    		byte[] dataBuffer = new byte[MESSAGE_SIZE];
+	    		Log.d("SkullAudio", "XMIT: Initializing output stream.");
 	    		DataOutputStream DOS = new DataOutputStream(soundSock.getOutputStream());
 	    		
-	    		DOS.write(cryptoKey.getEncoded(), 0, cryptoKey.getEncoded().length);
-	    		DOS.write(hashKey.getEncoded(), 0, hashKey.getEncoded().length);
+	    		DOS.write(cryptoKeySpec.getEncoded());
+	    		DOS.write(hashKeySpec.getEncoded());
 	    		
-	    		DOS.writeInt(bitRate);
+	    		DOS.writeInt(audioBitRate);
 	    		//DOS.writeInt(channelConfig);
-	    		DOS.writeInt(encoding);
+	    		DOS.writeInt(audioEncoding);
 	    		
-	    		byte[] buffer = new byte[MESSAGE_SIZE];
+	    		//FIXME: Remove starting here...
+	    		for(int i=0; i<MESSAGE_SIZE; i++)
+	    			dataBuffer[i] = (byte) i;
+	    		SkullMessage testMessage = SMF.createMessage(dataBuffer);
+	    		
+	    		Log.d("SkullAudio","XMIT: Sending test message.");
+	    		Log.d("SkullAudio","XMIT: GBT1 Test Message:" + Util.byteArrayToString(testMessage.getData()));
+	    		
+	    		DOS.write(testMessage.getData());
+	    		
+	    		//FIXME: to here.
+	    		
+    			Log.d("SkullAudio", "XMIT: Initializing recorder.");
+	    		AudioRecord SoundRecorder = new AudioRecord(audioSource, audioBitRate, audioChannelConfig, audioEncoding, audioBufferSize);
 
-    			android.util.Log.d("SkullAudio", "Initializing recorder.");
-	    		AudioRecord SoundRecorder = new AudioRecord(source, bitRate, channelConfig, encoding, bufSize);
-
-    			android.util.Log.d("SkullAudio", "Starting to record.");
+    			Log.d("SkullAudio", "XMIT: Starting to record.");
 	    		SoundRecorder.startRecording();
 	
 	    		while(SoundRecorder.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING && soundSock.isConnected())
 	    		{
-	    			android.util.Log.d("SkullAudio", "Reading recorded data.");
+	    			Log.d("SkullAudio", "XMIT: Reading recorded data.");
 	    			int len = 0;
-	    			while(len < buffer.length)
-	    				len += SoundRecorder.read(buffer, len, buffer.length - len);
-	    			SkullMessage m = SMF.createMessage(buffer);
 	    			
-	    			DOS.write(m.getHashedData());
+	    			//Read audio until full buffer.
+	    			while(len < dataBuffer.length)
+	    				len += SoundRecorder.read(dataBuffer, len, dataBuffer.length - len);
+	    			
+	    			//Write message containing encrypted audio data.
+	    			SkullMessage audioMessage = SMF.createMessage(dataBuffer);
+	    			DOS.write(audioMessage.getData());
 
-	    			android.util.Log.d("SkullAudio", "Recorded data written.");
+	    			Log.d("SkullAudio", "XMIT: Recorded data written.");
 	    		}
 
-    			android.util.Log.d("SkullAudio", "Connection closed, etc.");
+    			Log.d("SkullAudio", "XMIT: Connection closed, etc.");
 	    		
 	    		SoundRecorder.stop();
-    		}
+    		} 
     		catch (IOException e)
     		{
-    			android.util.Log.e("SkullAudio", "Error when recording audio.");
-    			android.util.Log.e("SkullAudio", e.getMessage());
+    			Log.e("SkullAudio", "XMIT: Error when recording audio.");
+    			Log.e("SkullAudio", e.getMessage());
     		} catch (InvalidKeyException e) {
 				// TODO Auto-generated catch block
+    			Log.e("SkullAudio","XMIT: Invalid key for encryption algorithm.");
 				e.printStackTrace();
 			} catch (NoSuchAlgorithmException e) {
 				// TODO Auto-generated catch block
+    			Log.e("SkullAudio","XMIT: Bad algorithm constants.");
 				e.printStackTrace();
 			} catch (NoSuchPaddingException e) {
 				// TODO Auto-generated catch block
+				Log.e("SkullAudio","XMIT: Bad padding (message length?)");
 				e.printStackTrace();
 			} catch (IllegalBlockSizeException e) {
 				// TODO Auto-generated catch block
+				Log.e("SkullAudio","XMIT: Bad block size (message length?)");
 				e.printStackTrace();
 			} catch (BadPaddingException e) {
 				// TODO Auto-generated catch block
+    			Log.e("SkullAudio","XMIT: Bad padding (message length?)");
 				e.printStackTrace();
 			}
     	}
@@ -144,108 +166,119 @@ public class SkullAudio extends Activity {
     
     private class ListenThread extends Thread{
     	
-    	private Socket soundSock;
+    	private Socket skullSocket;
     	
     	public ListenThread(Socket S)
     	{
-    		soundSock = S;
+    		skullSocket = S;
     	}
     	
     	public void run()
     	{
     		try{
-
-    			android.util.Log.d("SkullAudio", "Initializing the reading stream");
-    			DataInputStream rawAudio = new DataInputStream(soundSock.getInputStream());
+    			Log.d("SkullAudio", "RECV: Initializing the reading stream");
+    			DataInputStream audioInputStream = new DataInputStream(skullSocket.getInputStream());
 				
-				byte[] buf;
-				byte[] keybuf = new byte[16];
+				byte[] dataBuffer = new byte[MESSAGE_SIZE];
+				byte[] hashBuffer = new byte[20];
+				byte[] keyBuffer = new byte[16];
+				
+				int audioSampleRate, audioChannelConfig, audioFormat;
+				AudioTrack audioOutput;
 				SecretKey cryptoKey, hashKey;
+				SkullMessageFactory SMF;
 				
-				int sampleRate, channelConfig, format;
-				AudioTrack track;
-				
-				if(soundSock.isConnected() && !soundSock.isClosed())
+				if(skullSocket.isConnected() && !skullSocket.isClosed())
 				{
-					rawAudio.readFully(keybuf);
-					cryptoKey = new SecretKeySpec(keybuf, AES);
-					rawAudio.readFully(keybuf);
-					hashKey = new SecretKeySpec(keybuf, HMAC);
+					audioInputStream.readFully(keyBuffer);
+					Log.d("SkullAudio", "RECV: Read crypto key: " + Util.byteArrayToString(keyBuffer));
+					cryptoKey = new SecretKeySpec(keyBuffer, AES);
 					
-					android.util.Log.d("SkullAudio", "Reading sample rate");
-					sampleRate = rawAudio.readInt();
-					android.util.Log.d("SkullAudio", "Sample rate:" + Integer.toString(sampleRate));
+					audioInputStream.readFully(keyBuffer);
+					Log.d("SkullAudio", "RECV: Read hash key: " + Util.byteArrayToString(keyBuffer).toString());
+					hashKey = new SecretKeySpec(keyBuffer, HMAC);
 					
-					android.util.Log.d("SkullAudio", "Reading channel config");
-					channelConfig = AudioFormat.CHANNEL_OUT_MONO;
-//					channelConfig = rawAudio.readInt();
-					android.util.Log.d("SkullAudio", "Channel Config:" + Integer.toString(channelConfig));
 					
-					android.util.Log.d("SkullAudio", "Reading audio format");
-					format = rawAudio.readInt();
-					android.util.Log.d("SkullAudio", "Audio format:" + Integer.toString(format));
+					Log.d("SkullAudio", "RECV: Reading sample rate");
+					audioSampleRate = audioInputStream.readInt();
+					Log.d("SkullAudio", "RECV: Sample rate:" + Integer.toString(audioSampleRate));
 					
-					android.util.Log.d("SkullAudio", "Initializing track");
-					track = new AudioTrack(AudioManager.STREAM_VOICE_CALL, sampleRate, channelConfig, format, AudioTrack.getMinBufferSize(sampleRate, channelConfig, format)*32, AudioTrack.MODE_STREAM);
-
+					Log.d("SkullAudio", "RECV: Reading channel config");
+					audioChannelConfig = AudioFormat.CHANNEL_OUT_MONO;
+//					audioChannelConfig = rawAudio.readInt();
+					Log.d("SkullAudio", "RECV: Channel Config:" + Integer.toString(audioChannelConfig));
+					
+					Log.d("SkullAudio", "RECV: Reading audio format");
+					audioFormat = audioInputStream.readInt();
+					Log.d("SkullAudio", "RECV: Audio format:" + Integer.toString(audioFormat));
+					
+					Log.d("SkullAudio", "RECV: Initializing track");
+					audioOutput = new AudioTrack(AudioManager.STREAM_VOICE_CALL, audioSampleRate, audioChannelConfig, audioFormat, AudioTrack.getMinBufferSize(audioSampleRate, audioChannelConfig, audioFormat)*32, AudioTrack.MODE_STREAM);
 				}
 				else
 				{
-					rawAudio.close();
-					soundSock.close();
+					audioInputStream.close();
+					skullSocket.close();
 					return;
 				}
-				android.util.Log.d("SkullAudio", "Track initialized. Playing back data.");
+				Log.d("SkullAudio", "RECV: Track initialized. Playing back data.");
+				SMF = new SkullMessageFactory(cryptoKey, hashKey);
 				
-				SkullMessageFactory SMF = new SkullMessageFactory(cryptoKey, hashKey);
-				buf = new byte[MESSAGE_SIZE + SMF.getHashSize()];
+				if(SMF == null)
+					SMF = new SkullMessageFactory(cryptoKey, hashKey);
 			
-				while(soundSock.isConnected() && ! soundSock.isClosed())
-				{
-					android.util.Log.d("SkullAudio", "Beginning read");
-					
-					rawAudio.readFully(buf);
-					
-					SkullMessage m = SMF.readMessage(buf);
-					
-					track.write(m.getData(), 0, m.getData().length);
-					if(track.getPlayState() != AudioTrack.PLAYSTATE_PLAYING){
-						track.play();
-					}
-					android.util.Log.d("SkullAudio", "Written to buffer");
-				}
-				android.util.Log.d("SkullAudio", "Done. Closing up.");
+				Log.d("SkullAudio", "RECV: Reading test message.");
+				audioInputStream.readFully(dataBuffer);
+
+	    		Log.d("SkullAudio","RECV: GBT1 Test Message:" + Util.byteArrayToString(dataBuffer));
+	    		
+				SMF.readMessage(dataBuffer);
+				Log.d("SkullAudio", "RECV: Test message successfully decoded.");
 				
-				rawAudio.close();
-				soundSock.close();
+				
+				while(skullSocket.isConnected() && ! skullSocket.isClosed())
+				{
+					Log.d("SkullAudio", "RECV: Beginning read");
+					
+					audioInputStream.readFully(hashBuffer);
+					audioInputStream.readFully(dataBuffer);
+					
+					SkullMessage m = SMF.readMessage(dataBuffer);
+					
+					audioOutput.write(m.getData(), 0, m.getData().length);
+					if(audioOutput.getPlayState() != AudioTrack.PLAYSTATE_PLAYING){
+						audioOutput.play();
+					}
+					Log.d("SkullAudio", "RECV: Written to buffer");
+				}
+				Log.d("SkullAudio", "RECV: Done. Closing up.");
+				
+				audioInputStream.close();
+				skullSocket.close();
     		}
     		catch (IOException e)
     		{
-    			android.util.Log.e("SkullAudio", "Error when playing audio.");
-    			android.util.Log.e("SkullAudio", "Error when reading from stream.");
+    			Log.e("SkullAudio", "RECV: Error when playing audio.");
+    			Log.e("SkullAudio", "RECV: Error when reading from stream.");
     			e.printStackTrace();
     		} catch (NoSuchAlgorithmException e) {
-    			android.util.Log.e("SkullAudio", "Bad encryption algorithm spec");
+    			Log.e("SkullAudio", "RECV: Bad encryption algorithm spec");
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} catch (NoSuchPaddingException e) {
-				android.util.Log.e("SkullAudio","Something weird with the padding.");
+				Log.e("SkullAudio","RECV: Something weird with the padding.");
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} catch (InvalidKeyException e) {
-				android.util.Log.e("SkullAudio","Wrong key for this algorithm.");
+				Log.e("SkullAudio","RECV: Wrong key for this algorithm.");
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} catch (IllegalBlockSizeException e) {
-				android.util.Log.e("SkullAudio","Bad block size for algorithm.");
+				Log.e("SkullAudio","RECV: Bad block size for algorithm.");
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} catch (BadPaddingException e) {
-				android.util.Log.e("SkullAudio", "Something's messed up with padding.");
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (TrickeryException e) {
-				android.util.Log.e("SkullAudio","Bad hash on message.");
+				Log.e("SkullAudio", "RECV: Something's messed up with padding.");
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}

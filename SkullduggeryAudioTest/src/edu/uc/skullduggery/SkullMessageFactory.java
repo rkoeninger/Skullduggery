@@ -13,56 +13,59 @@ import javax.crypto.spec.SecretKeySpec;
 public class SkullMessageFactory {
 	private final String HMAC = "HmacSHA1";
 	private final String AES = "AES";
-	private SecretKey _cryptoKey, _hashKey;
-	private SecretKeySpec _AESKey;
-	private Cipher _crypto;
+	private SecretKey _aesEncryptKey, _aesDecryptKey, _hashKey;
+	private Cipher _encryptor, _decryptor;
 	private Mac _mac;
 	
 	public class TrickeryException extends Exception
 	{
 		private static final long serialVersionUID = -5951444176541432600L;
 	}
-	public SkullMessageFactory(SecretKey cryptoKey, SecretKey hashKey) throws NoSuchAlgorithmException, NoSuchPaddingException
+	public SkullMessageFactory(SecretKey cryptoKey, SecretKey hashKey) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException
 	{
-		_cryptoKey = cryptoKey;
-		_hashKey = hashKey;
-		_AESKey = new SecretKeySpec(_cryptoKey.getEncoded(), AES);
-		_crypto = Cipher.getInstance(AES);
+		_aesEncryptKey = new SecretKeySpec(cryptoKey.getEncoded(), AES);
+		_aesDecryptKey = new SecretKeySpec(cryptoKey.getEncoded(), AES);
+		_hashKey = new SecretKeySpec(hashKey.getEncoded(), HMAC);
+		_encryptor = Cipher.getInstance(AES);
+		_encryptor.init(Cipher.ENCRYPT_MODE, _aesEncryptKey);
+		
+		_decryptor = Cipher.getInstance(AES);
+		_decryptor.init(Cipher.DECRYPT_MODE, _aesDecryptKey);
+		
 		_mac = Mac.getInstance(HMAC);
+		_mac.init(_hashKey);
 	}
 	
-	public SkullMessage createMessage(byte[] m) throws InvalidKeyException, IllegalBlockSizeException, BadPaddingException
+	public SkullMessage createMessage(byte[] m) throws IllegalBlockSizeException, BadPaddingException
 	{
-		_crypto.init(Cipher.ENCRYPT_MODE, _AESKey);
-		byte[] cipherText = _crypto.doFinal(m);
-		_mac.init(_hashKey);
-		byte[] mac = _mac.doFinal(m);
+		byte[] cipherText = _encryptor.update(m);
+		_mac.update(m);
 		
-		return new SkullMessage(cipherText, mac);
+		return new SkullMessage(cipherText);
 	}
 	
 	public int getHashSize()
 	{
 		return _mac.getMacLength();
 	}
+	
+	public byte[] getHash() throws InvalidKeyException
+	{
+		byte[] b = _mac.doFinal();
+		_mac.init(_hashKey);
+		return b;
+	}
+	
 	public int getBlockSize()
 	{
-		return _crypto.getBlockSize();
+		return _encryptor.getBlockSize();
 	}
-	public SkullMessage readMessage(byte[] m) throws InvalidKeyException, IllegalBlockSizeException, BadPaddingException, TrickeryException
+	
+	public SkullMessage readMessage(byte[] cipherText) throws IllegalBlockSizeException, BadPaddingException
 	{
-		int macLength = _mac.getMacLength();
-		_crypto.init(Cipher.DECRYPT_MODE, _AESKey);
-		byte[] message = _crypto.doFinal(m,macLength,m.length - macLength);
-		_mac.init(_hashKey);
-		byte[] mac_check = _mac.doFinal(message);
+		byte[] plainText = _decryptor.update(cipherText);
+		_mac.update(plainText);
 		
-		/*
-		for(int i = 0; i<mac_check.length; i++)
-			if(mac_check[i] != m[i]){
-				throw new TrickeryException();
-			}
-		*/
-		return new SkullMessage(message, mac_check);
+		return new SkullMessage(plainText);
 	}
 }
