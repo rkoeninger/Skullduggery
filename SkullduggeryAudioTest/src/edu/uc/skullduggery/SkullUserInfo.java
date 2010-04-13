@@ -7,8 +7,7 @@ import java.io.Serializable;
 import javax.crypto.KeyGenerator;
 import javax.crypto.Mac;
 import javax.crypto.SecretKey;
-
-import android.os.Bundle;
+import javax.crypto.spec.SecretKeySpec;
 
 public class SkullUserInfo implements Serializable {
 	/**
@@ -21,10 +20,45 @@ public class SkullUserInfo implements Serializable {
 	private SecretKey _salt;
 	private byte[] _pubKeyHash;
 	private String _number;
+	private int _userId;
+	
+	public int getUserId()
+	{
+		return _userId;
+	}
+	
+	public void setUserId(int userId)
+	{
+		_userId = userId;
+	}
+	
+	public byte[] getSalt()
+	{
+		return _salt.getEncoded();
+	}
+	
+	public byte[] getHash()
+	{
+		return _pubKeyHash;
+	}
+	
+	public String getNumber()
+	{
+		return _number;
+	}
+
+	public SkullUserInfo(String number, int id, byte[] salt, byte[] pubKeyHash)
+	{
+		_userId = id;
+		_salt = new SecretKeySpec(salt, HMAC);
+		_pubKeyHash = pubKeyHash;
+		_number = number;
+	}
 	
 	public SkullUserInfo(String number) throws NoSuchAlgorithmException
 	{
 		KeyGenerator keygen = KeyGenerator.getInstance(HMAC);
+		_userId = 0;
 		_salt = keygen.generateKey();
 		_number = number;
 	}
@@ -43,10 +77,5 @@ public class SkullUserInfo implements Serializable {
 		Mac mac = Mac.getInstance(HMAC);
 		mac.init(_salt);
 		_pubKeyHash = mac.doFinal(pubKey);
-	}
-	
-	public static void saveUserInfo(Bundle savedInstanceState, SkullUserInfo u)
-	{
-		savedInstanceState.putSerializable(u._number,u);
 	}
 }
