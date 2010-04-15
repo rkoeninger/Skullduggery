@@ -157,6 +157,7 @@ public class CommTestST extends Activity {
 
     				localPacketTime = System.currentTimeMillis();
     				bytesRead = ain.read(buf, 0, buf.length);
+    				bytesRead = resample8000To4000(buf, 0, bytesRead);
     				
     				out.writeLong(localPacketSeq);
     				out.writeLong(localPacketTime);
@@ -182,6 +183,7 @@ public class CommTestST extends Activity {
     				}
     				
     				in.readFully(buf, 0, bytesRead);
+    				bytesRead = resample4000To8000(buf, 0, bytesRead);
     				aout.write(buf, 0, bytesRead);
     				
                     if (aout.getPlayState() !=
@@ -220,5 +222,24 @@ public class CommTestST extends Activity {
             commThread = null;
             
     	}
+    }
+    
+    private static int resample8000To4000(byte[] data, int off, int len){
+    	int resampledLength = len / 2;
+    	byte[] resampledData = new byte[resampledLength];
+    	for (int x = 0; x < resampledLength; x++){
+    		resampledData[x] = data[off + (2 * x)];
+    	}
+    	System.arraycopy(resampledData, 0, data, off, resampledLength);
+    	return resampledLength;
+    }
+    private static int resample4000To8000(byte[] data, int off, int len){
+    	int resampledLength = len * 2;
+    	byte[] resampledData = new byte[resampledLength];
+    	for (int x = 0; x < resampledLength; x += 2){
+    		resampledData[x] = resampledData[x + 1] = data[off + x];
+    	}
+    	System.arraycopy(resampledData, 0, data, off, resampledLength);
+    	return resampledLength;
     }
 }
