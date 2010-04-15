@@ -11,15 +11,10 @@ import android.os.Bundle;
 public class SkullUserInfoManager {
 	Bundle state;
 	SQLiteDatabase sqldb;
-
-	private static final String SkullStorage = "SkullStorage";
-	private static final String tableName = "UserInfo";
-	private static final String sql_CreateUserInfoTable = 
-		"CREATE TABLE IF NOT EXISTS " + tableName + "(" +
-		"UserID INTEGER PRIMARY KEY ASC AUTOINCREMENT," +
-		"Number CHAR(10), " +
-		"Salt BLOB," +
-		"PubKeyHash BLOB);";
+	
+	private static final String SkullStorage = Constants.DBNAME;
+	private static final String tableName = Constants.USERINFOTABLE;
+	private static final String sql_CreateUserInfoTable = Constants.USERINFOTABLESCHEMA;
 	
 	public SkullUserInfoManager(ContextWrapper context)
 	{
@@ -37,11 +32,16 @@ public class SkullUserInfoManager {
 		if(SUI.getUserId() > 0)
 		{
 			String[] whereArgs = {Integer.toString(SUI.getUserId())};
+			
+			sqldb.beginTransaction();
 			sqldb.update("UserInfo", saveArgs, "UserID = ?",whereArgs);
+			sqldb.endTransaction();
 		}
 		else
 		{
+			sqldb.beginTransaction();
 			long UserId = sqldb.insertOrThrow(tableName, null, saveArgs);
+			sqldb.endTransaction();
 			SUI.setUserId((int) UserId);
 		}
 	}
@@ -70,5 +70,10 @@ public class SkullUserInfoManager {
 		}
 		
 		return retUserInfo;
+	}
+	
+	public void close()
+	{
+		sqldb.close();
 	}
 }
