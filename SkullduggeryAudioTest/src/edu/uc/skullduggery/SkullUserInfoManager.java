@@ -12,7 +12,7 @@ public class SkullUserInfoManager {
 	Bundle state;
 	SQLiteDatabase sqldb;
 	
-	private static final String SkullStorage = Constants.DBNAME;
+	private static final String SkullStorage = Constants.USERDBNAME;
 	private static final String tableName = Constants.USERINFOTABLE;
 	private static final String sql_CreateUserInfoTable = Constants.USERINFOTABLESCHEMA;
 	

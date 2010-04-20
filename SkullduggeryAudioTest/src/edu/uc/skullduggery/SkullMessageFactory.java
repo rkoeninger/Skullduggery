@@ -11,8 +11,8 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
 public class SkullMessageFactory {
-	private final String HMAC = "HmacSHA1";
-	private final String AES = "AES";
+	private final String HMAC = Constants.HASHALGORITHM;
+	private final String AES = Constants.SYMMALGORITHM;
 	private SecretKey _aesEncryptKey, _aesDecryptKey, _hashKey;
 	private Cipher _encryptor, _decryptor;
 	private Mac _mac;
