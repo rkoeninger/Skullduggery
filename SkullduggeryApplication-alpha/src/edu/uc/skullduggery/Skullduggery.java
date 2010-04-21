@@ -48,7 +48,7 @@ public class Skullduggery extends Activity {
         findViewById(R.id.callButton).setOnClickListener(callButtonListener);
         findViewById(R.id.hangupButton).setOnClickListener(hangupButtonListener);
         
-        service = new SkullTalkService(handlerCallback);
+        service = new SkullTalkService(handlerCallback, this);
         
     }
     

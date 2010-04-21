@@ -1,9 +1,9 @@
 package edu.uc.skullduggery;
+import java.io.InputStream;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 
 import javax.crypto.BadPaddingException;
-import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.Mac;
 import javax.crypto.NoSuchPaddingException;
@@ -12,36 +12,24 @@ import javax.crypto.spec.SecretKeySpec;
 
 public class SkullMessageFactory {
 	private final String HMAC = Constants.HASHALGORITHM;
-	private final String AES = Constants.SYMMALGORITHM;
-	private SecretKey _aesEncryptKey, _aesDecryptKey, _hashKey;
-	private Cipher _encryptor, _decryptor;
+	private SecretKey _hashKey;
 	private Mac _mac;
 	
 	public class TrickeryException extends Exception
 	{
 		private static final long serialVersionUID = -5951444176541432600L;
 	}
-	public SkullMessageFactory(SecretKey cryptoKey, SecretKey hashKey) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException
+	
+	public SkullMessageFactory(SecretKey hashKey) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException
 	{
-		_aesEncryptKey = new SecretKeySpec(cryptoKey.getEncoded(), AES);
-		_aesDecryptKey = new SecretKeySpec(cryptoKey.getEncoded(), AES);
 		_hashKey = new SecretKeySpec(hashKey.getEncoded(), HMAC);
-		_encryptor = Cipher.getInstance(AES);
-		_encryptor.init(Cipher.ENCRYPT_MODE, _aesEncryptKey);
-		
-		_decryptor = Cipher.getInstance(AES);
-		_decryptor.init(Cipher.DECRYPT_MODE, _aesDecryptKey);
-		
 		_mac = Mac.getInstance(HMAC);
 		_mac.init(_hashKey);
 	}
 	
-	public SkullMessage createMessage(byte[] m) throws IllegalBlockSizeException, BadPaddingException
+	public SkullMessage createMessage(byte[] data, SkullMessage.MessageType type) throws IllegalBlockSizeException, BadPaddingException
 	{
-		byte[] cipherText = _encryptor.update(m);
-		_mac.update(m);
-		
-		return new SkullMessage(cipherText);
+		return new SkullMessage(_mac.doFinal(data), type, data);
 	}
 	
 	public int getHashSize()
@@ -56,16 +44,25 @@ public class SkullMessageFactory {
 		return b;
 	}
 	
-	public int getBlockSize()
+	public boolean checkHash(SkullMessage m)
 	{
-		return _encryptor.getBlockSize();
+		byte[] data = m.getData();
+		_mac.update(data);
+		byte[] messageHash = m.getHash();
+		byte[] dataHash = _mac.doFinal();
+		
+		return java.util.Arrays.equals(messageHash, dataHash);
 	}
 	
-	public SkullMessage readMessage(byte[] cipherText) throws IllegalBlockSizeException, BadPaddingException
+	public SkullMessage readMessage(InputStream s) throws IllegalBlockSizeException, BadPaddingException
 	{
-		byte[] plainText = _decryptor.update(cipherText);
-		_mac.update(plainText);
-		
-		return new SkullMessage(plainText);
+		SkullMessage rMessage = null;
+		//TODO: Read MAC from the stream.
+		//TODO: Read Type from the stream.
+		//TODO: Read data length from the stream.
+		//TODO: Read data from the stream.
+		//TODO: Construct a SkullMessage
+		//TODO: Return our SkullMessage
+		return rMessage;
 	}
 }

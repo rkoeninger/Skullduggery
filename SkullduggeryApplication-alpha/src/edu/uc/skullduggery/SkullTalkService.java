@@ -1,6 +1,7 @@
 package edu.uc.skullduggery;
 
-import java.math.BigInteger;
+import java.net.InetAddress;
+import android.content.ContextWrapper;
 import android.os.Handler;
 import android.os.Message;
 
@@ -11,25 +12,28 @@ import android.os.Message;
  * A single instance should be all that is necessary for as long as the
  * app runs.
  */
+
 public class SkullTalkService{
 	
 	public static enum CallState
 	{LISTENING, CALLING, TALKING};
 	
-	private BigInteger transmitKey;
-	private BigInteger receiveKey;
 	private CallState callState;
 	private Thread callThread;
 	private Thread acceptThread;
-	private Thread transmitThread;
-	private Thread receiveThread;
+	private Thread talkThread;
 	private Handler uiHandler;
+	private ContextWrapper appContext;
+	private SkullKeyManager keyManager;
 	
-	public SkullTalkService(Handler uiHandler){
+	public SkullTalkService(Handler uiHandler, ContextWrapper context){
 		this.uiHandler = uiHandler;
 	}
 	
 	public void start(){
+		//TODO: Read public key from file
+		keyManager = new SkullKeyManager(appContext);
+		
 		// Contact server to register ip info
 		listen();
 	}
@@ -63,10 +67,8 @@ public class SkullTalkService{
 		callState = CallState.TALKING;
 		callThread = null;
 		acceptThread = null;
-		transmitThread = new TransmitThread();
-		receiveThread = new ReceiveThread();
-		transmitThread.start();
-		receiveThread.start();
+		talkThread = new TalkThread();
+		talkThread.start();
 		uiHandler.handleMessage(
 		Message.obtain(uiHandler, 1));
 	}
@@ -76,8 +78,7 @@ public class SkullTalkService{
 	// OR if user hangs-up.
 	private synchronized void endComm(){
 		callState = CallState.LISTENING;
-		transmitThread = null;
-		receiveThread = null;
+		talkThread = null;
 		uiHandler.handleMessage(
 		Message.obtain(uiHandler, 2));
 		listen();
@@ -96,30 +97,39 @@ public class SkullTalkService{
 	 */
 	public class CallThread extends Thread{
 		private String number;
+		private InetAddress getAddressByNumber(String recNum)
+		{
+			InetAddress recIp = null;
+			//TODO: Use SkullSwitchStation communication here.
+			//TODO: Open a socket to the server
+			//TODO: Send call request to SkullServer
+			//TODO: Get call request from server		
+			return recIp;
+		}
 		public CallThread(String number){
 			this.number = number;
 		}
 		public void run(){
-			// Opens port to listener on receiving phone/
-			//                      request direction from switch station
+			//TODO: Get the IP address of the recipient
+			InetAddress recIP = this.getAddressByNumber(this.number);
 			
-			// Open a socket between the phones
-			
-			// Write first packet including our encrypt key
-			
-			// Read response packet from receiving phone
-			
-			// ^^^This is the handshake protocol
-			
-			/* Start transmit thread
-			 * Start receive thread
-			 * Notify Activity that call has started through a callback,
-			 *     so it can update the UI
-			 * End this thread
-			 * Any running AcceptThread should stop also
-			 * 
-			 * ^^^ This is all done by the call below
-			 */
+			//TODO: Open connection to called phone
+			//TODO: Send first packet (Own phone number, SKUL magic, etc)
+			//TODO: Get first packet (should be BUSY or ACCEPT or whatever + Pub Key)
+			//TODO: Check pubKey against stored public key hash
+
+			//TODO: If it's good, good
+			//TODO: If it's not good, notify the handler through a callback
+			//TODO: If it's new, notify the handler through a callback (different)
+			//TODO: Generate a session key
+			//TODO: Generate a MAC key
+			//TODO: If rejected by user: Send 'reject' packet. Close connection.
+			//TODO: Send session, MAC key through encrypted thinger.
+
+			//These are done by the call below:
+			//TODO: Start talk thread.
+			//TODO: Notify Activity the conversation has started.
+			//TODO: Kill this thread, any accept thread
 			SkullTalkService.this.startComm();
 		}
 	}
@@ -136,30 +146,22 @@ public class SkullTalkService{
 	 */
 	public class AcceptThread extends Thread{
 		public void run(){
-			// Receives call (srvskt.accept();)/
-			//               reads call after polling switch station
+			//TODO: Accept socket connection
+			//TODO: Open socket between phones
+			//TODO: Read first packet
+			//TODO: If talking:
+				//TODO: Send reject packet
+				//TODO: hang up
+			//TODO: If not talking:
+			//TODO: Reply with public key, own phone number, etc.
+			//TODO: Wait for (encrypted) response; should be session key, MAC key
+			//TODO: May be 'reject' packet.
+			//TODO: Read Cipher'd stream
 			
-			//At this point, a socket is opened between the phones
-			
-			//Read first packet from calling phone which includes
-			//encrypt key
-			
-			//Send a packet which includes this phone's public key
-			
-			//^^^This is the handshake procedure
-			
-			
-			/* Start transmit thread
-			 * Start receive thread
-			 * Notify Activity that call has started through a callback,
-			 *     so it can update the UI
-			 * End this thread
-			 * 
-			 * ^^^ This is all done by the call below
-			 */
+			//SkullTalkService does these:
+			//TODO: Start Talk Thread
+			//TODO: Notify Activity that call has started through a callback
 			SkullTalkService.this.startComm();
-			
-			
 		}
 	}
 	
@@ -167,60 +169,22 @@ public class SkullTalkService{
 	 * Reads data from microphone, encrypts and transmits
 	 * voice packets.
 	 * 
+	 * Reads data from socket, decrypts and plays voice packets.
+	 * 
 	 * Started by SkullTalkService after AcceptThread
 	 * notifies it of an incoming call.
 	 * 
 	 * Stopped by SkullTalkService if user hangs up or
 	 * if ReceiveThread gets a hang-up signal.
 	 */
-	public class TransmitThread extends Thread{
+	public class TalkThread extends Thread{
 		public void run(){
 			// check that the call is still in progress and socket is open
 			if (SkullTalkService.this.callState != CallState.TALKING){
 				return;
 			}
-			
-			// read a block of data from the audio buffer
-			
-			// perform block cipher
-			
-			// write voice data packet to other phone
-			
-			
-			//If at any point, call has ended or connect error,
-			//                  end this thread
+			//TODO: Import what we've learned from CommTest project into this class.
 			SkullTalkService.this.endComm();
 		}
 	}
-	
-	/**
-	 * Reads data off of the data connection, decrypts and
-	 * plays back over speaker/headset.
-	 * 
-	 * Started by SkullTalkService after AcceptThread notifies
-	 * it of an incoming call.
-	 * 
-	 * Stopped by SkullTalkService if user hangs up or
-	 * if a hang-up signal is read from the other phone.
-	 */
-	public class ReceiveThread extends Thread{
-		public void run(){
-			// check that the call is still in progress and socket is open
-			if (SkullTalkService.this.callState != CallState.TALKING){
-				return;
-			}
-			
-			// read a packet from the socket
-			
-			// perform block cipher
-			
-			// write voice data to audio buffer
-			
-			
-			//If at any point, call has ended or connect error,
-			//                  end this thread
-			SkullTalkService.this.endComm();
-		}
-	}
-
 }
