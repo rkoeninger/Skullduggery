@@ -19,7 +19,7 @@ public class Constants {
             "PublicExponent BLOB NOT NULL," +
             "PrivateExponent BLOB NOT NULL);";
     
-	public static final String KEYALIAS = "SkullKeys";	
+	//public static final String KEYALIAS = "SkullKeys";	
 	
 	public static final String HASHALGORITHM = "HmacSHA1";
 	public static final int HASHKEYSIZE = 128;
@@ -27,5 +27,7 @@ public class Constants {
 	public static final int SYMKEYSIZE = 128;
 	public static final String ASYMALGORITHM = "RSA";
 	public static final int ASYMKEYSIZE = 4096;
+	public static final byte[] MAGICBYTES = "SKUL".getBytes();
+	
 	
 }

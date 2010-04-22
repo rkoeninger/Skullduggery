@@ -1,9 +1,22 @@
 package edu.uc.skullduggery;
 
-import java.net.InetAddress;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.security.KeyPair;
+import java.security.NoSuchAlgorithmException;
+import java.security.interfaces.RSAPublicKey;
+import java.security.spec.InvalidKeySpecException;
+
+import android.content.Context;
 import android.content.ContextWrapper;
 import android.os.Handler;
 import android.os.Message;
+import android.telephony.TelephonyManager;
 
 /**
  * This class is a collection of threads that constitute the process
@@ -25,9 +38,16 @@ public class SkullTalkService{
 	private Handler uiHandler;
 	private ContextWrapper appContext;
 	private SkullKeyManager keyManager;
+	private SkullMessageFactory messageFact;
+	private final String phoneNumber;
+	private Socket callSocket;
+	
 	
 	public SkullTalkService(Handler uiHandler, ContextWrapper context){
 		this.uiHandler = uiHandler;
+		
+		phoneNumber = ((TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE)).getLine1Number();
+		
 	}
 	
 	public void start(){
@@ -97,9 +117,10 @@ public class SkullTalkService{
 	 */
 	public class CallThread extends Thread{
 		private String number;
-		private InetAddress getAddressByNumber(String recNum)
+		
+		private InetSocketAddress getAddressByNumber(String recNum)
 		{
-			InetAddress recIp = null;
+			InetSocketAddress recIp = null;
 			//TODO: Use SkullSwitchStation communication here.
 			//TODO: Open a socket to the server
 			//TODO: Send call request to SkullServer
@@ -110,8 +131,32 @@ public class SkullTalkService{
 			this.number = number;
 		}
 		public void run(){
+			
+			try{
+				
 			//TODO: Get the IP address of the recipient
-			InetAddress recIP = this.getAddressByNumber(this.number);
+			InetSocketAddress receiver = this.getAddressByNumber(this.number);
+
+			
+			messageFact = SkullMessageFactory.getInstance();
+			SkullMessage mes; 
+			callSocket = new Socket(receiver.getAddress(), receiver.getPort());
+			
+			InputStream cis = callSocket.getInputStream();
+			OutputStream cos = callSocket.getOutputStream();
+			
+			DataInputStream dis = new DataInputStream(cis);
+			DataOutputStream dos = new DataOutputStream(cos);
+			mes = messageFact.createMessage(phoneNumber.getBytes(), SkullMessage.MessageType.CALL);
+			
+			SkullMessageFactory.writeMessage(dos, mes);
+			
+			//read the reply
+			mes = SkullMessageFactory.readMessage(dis);
+			
+			
+			
+			
 			
 			//TODO: Open connection to called phone
 			//TODO: Send first packet (Own phone number, SKUL magic, etc)
@@ -131,6 +176,11 @@ public class SkullTalkService{
 			//TODO: Notify Activity the conversation has started.
 			//TODO: Kill this thread, any accept thread
 			SkullTalkService.this.startComm();
+			}
+			catch (IOException e)
+			{
+				e.printStackTrace();
+			}
 		}
 	}
 	
@@ -146,6 +196,24 @@ public class SkullTalkService{
 	 */
 	public class AcceptThread extends Thread{
 		public void run(){
+			
+			KeyPair keys;
+			SkullMessage pubMod, privMod;
+			try {
+			
+				keys = keyManager.getKeys();
+				RSAPublicKey pub = (RSAPublicKey) keys.getPublic();
+				pubMod = messageFact.createMessage(pub.getModulus().toByteArray(), SkullMessage.MessageType.PUBMOD);
+				privMod = messageFact.createMessage(pub.getPublicExponent().toByteArray(), SkullMessage.MessageType.PUBEXP);
+				
+			} catch (NoSuchAlgorithmException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (InvalidKeySpecException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			
 			//TODO: Accept socket connection
 			//TODO: Open socket between phones
 			//TODO: Read first packet

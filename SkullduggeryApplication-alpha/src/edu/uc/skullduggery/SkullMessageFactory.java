@@ -1,17 +1,18 @@
 package edu.uc.skullduggery;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.KeyGenerator;
 import javax.crypto.Mac;
-import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
 public class SkullMessageFactory {
-	private final String HMAC = Constants.HASHALGORITHM;
+	private static final String HMAC = Constants.HASHALGORITHM;
+	
 	private SecretKey _hashKey;
 	private Mac _mac;
 	
@@ -20,14 +21,40 @@ public class SkullMessageFactory {
 		private static final long serialVersionUID = -5951444176541432600L;
 	}
 	
-	public SkullMessageFactory(SecretKey hashKey) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException
+	/* Creates a new instance of SkullMessageFactory with a new hash key */
+	/* Note: Not a singleton object. We don't want that; multiple calls should have different hash keys */
+	/* A single call should only have one hash key though. */
+	/* Returns null upon failure */
+	public static SkullMessageFactory getInstance()
+	{
+		try{
+			KeyGenerator keygen;
+			SecretKey hashKey;
+		
+			keygen = KeyGenerator.getInstance(HMAC);
+			keygen.init(Constants.HASHKEYSIZE);
+			hashKey = keygen.generateKey();
+			return new SkullMessageFactory(hashKey);
+		}
+		catch (NoSuchAlgorithmException e)
+		{	
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (InvalidKeyException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return null;
+	}
+	
+	public SkullMessageFactory(SecretKey hashKey) throws NoSuchAlgorithmException, InvalidKeyException
 	{
 		_hashKey = new SecretKeySpec(hashKey.getEncoded(), HMAC);
 		_mac = Mac.getInstance(HMAC);
 		_mac.init(_hashKey);
 	}
 	
-	public SkullMessage createMessage(byte[] data, SkullMessage.MessageType type) throws IllegalBlockSizeException, BadPaddingException
+	public SkullMessage createMessage(byte[] data, SkullMessage.MessageType type)
 	{
 		return new SkullMessage(_mac.doFinal(data), type, data);
 	}
@@ -37,26 +64,33 @@ public class SkullMessageFactory {
 		return _mac.getMacLength();
 	}
 	
-	public byte[] getHash() throws InvalidKeyException
-	{
-		byte[] b = _mac.doFinal();
-		_mac.init(_hashKey);
-		return b;
-	}
-	
 	public boolean checkHash(SkullMessage m)
 	{
-		byte[] data = m.getData();
-		_mac.update(data);
-		byte[] messageHash = m.getHash();
-		byte[] dataHash = _mac.doFinal();
+		byte[] messageData, dataHash, messageHash;
 		
+		messageData = m.getData();
+		messageHash = m.getHash();
+		
+		dataHash = _mac.doFinal(messageData);
 		return java.util.Arrays.equals(messageHash, dataHash);
 	}
 	
-	public SkullMessage readMessage(InputStream s) throws IllegalBlockSizeException, BadPaddingException
+	public static void writeMessage(DataOutputStream dos, SkullMessage mes) throws IOException
+	{
+		byte[] hash = mes.getHash();
+		byte[] data = mes.getData();
+		SkullMessage.MessageType mesType = mes.getType();
+		
+		dos.write(Constants.MAGICBYTES);
+		dos.write(hash);
+		dos.writeByte((byte) mesType.ordinal());
+		dos.writeInt(data.length);
+		dos.write(data);
+	}
+	public static SkullMessage readMessage(InputStream s)
 	{
 		SkullMessage rMessage = null;
+		
 		//TODO: Read MAC from the stream.
 		//TODO: Read Type from the stream.
 		//TODO: Read data length from the stream.
