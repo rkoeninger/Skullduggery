@@ -8,10 +8,14 @@ import java.io.OutputStream;
 import java.math.BigInteger;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.security.InvalidKeyException;
+import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.NoSuchAlgorithmException;
+import java.security.PublicKey;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.InvalidKeySpecException;
+import java.security.spec.RSAPublicKeySpec;
 
 import edu.uc.skullduggery.SkullMessage.MessageType;
 
@@ -41,7 +45,9 @@ public class SkullTalkService{
 	private Handler uiHandler;
 	private ContextWrapper appContext;
 	private SkullKeyManager keyManager;
+	
 	private SkullMessageFactory messageFact;
+	private SkullUserInfoManager userManager;
 	private final String phoneNumber;
 	private Socket callSocket;
 	
@@ -60,7 +66,7 @@ public class SkullTalkService{
 	public void start(){
 		//TODO: Read public key from file
 		keyManager = new SkullKeyManager(appContext);
-	
+		userManager = new SkullUserInfoManager(appContext);
 		serverComm.connect(serverIP, serverPort);
 		serverComm.register(phoneNumber, new byte[]{1,1,1,1}, 9001);
 		
@@ -155,85 +161,116 @@ public class SkullTalkService{
 		public CallThread(String number){
 			this.number = number;
 		}
+		
 		public void run(){
-			
 			try{
+				BigInteger pubExp = null;
+				BigInteger pubMod = null;
+				InetSocketAddress server;
+				SkullUserInfo connectedUser;
+				SkullMessage mes;
+				InputStream cis;
+				OutputStream cos;
+				DataInputStream dis;
+				DataOutputStream dos;
+				String calledNumber;
+				KeyFactory kf = KeyFactory.getInstance(Constants.ASYMALGORITHM);
 				
-			//TODO: Get the IP address of the recipient
-			InetSocketAddress receiver = this.getAddressByNumber(this.number);
-			
-			messageFact = SkullMessageFactory.getInstance();
-			SkullMessage mes; 
-			//Open connection to called phone
-			
-			callSocket = new Socket(receiver.getAddress(), receiver.getPort());
-			
-			InputStream cis = callSocket.getInputStream();
-			OutputStream cos = callSocket.getOutputStream();
-			
-			DataInputStream dis = new DataInputStream(cis);
-			DataOutputStream dos = new DataOutputStream(cos);
-			//TODO: Send first packet (Own phone number, SKUL magic, etc)
-			mes = messageFact.createMessage(phoneNumber.getBytes(), SkullMessage.MessageType.CALL);
-			
-			SkullMessageFactory.writeMessage(dos, mes);
-			
-			//read the reply
-			//TODO this should have pubkey
-			//TODO this should have exp
-			//TODO: Get first packet (should be BUSY or ACCEPT or whatever + Pub Key)
-			
-			mes = SkullMessageFactory.readMessage(dis);
-			BigInteger pubExp, pubMod;
-			
-			//TODO: Get first packets (should be CALL + Number)
-			String calledNumber = new String(mes.getData());
-			if (calledNumber != number || mes.getType() != MessageType.CALL)
-			{
-				//TODO disconnect
-				//TODO Call handler to tell user that the connection is busy
-				//TODO Change call state to disconnected
-			}
-			
-			
-			
-			//TODO graceful failure if we don't get a PUBEXP, PUBMOD in order OR we get them ooo or something
-			//TODO idk.
-			if(mes.getType() == MessageType.PUBEXP)
-				pubExp = new BigInteger(mes.getData());
+				//Get the IP address of the recipient
+				server = this.getAddressByNumber(this.number);
 				
-			
-			mes = SkullMessageFactory.readMessage(dis);
-			
-			if(mes.getType() == MessageType.PUBMOD)
-				pubMod = new BigInteger(mes.getData());
-			else {
-				//TODO Disconnect; Enter accept state, print error.
-			}
+				if(server == null)
+				{
+					//TODO Notify the user the receiver does not exist
+					//TODO Disconnect
+				}
 				
-			
-			
-			
-			
-			
-			//TODO: Check pubKey against stored public key hash
-
-			//TODO: If it's good, good
-			//TODO: If it's not good, notify the handler through a callback
-			//TODO: If it's new, notify the handler through a callback (different)
-			//TODO: Generate a session key
-			//TODO: Generate a MAC key
-			//TODO: If rejected by user: Send 'reject' packet. Close connection.
-			//TODO: Send session, MAC key through encrypted thinger.
-
-			//These are done by the call below:
-			//TODO: Start talk thread.
-			//TODO: Notify Activity the conversation has started.
-			//TODO: Kill this thread, any accept thread
-			SkullTalkService.this.startComm();
+				messageFact = SkullMessageFactory.getInstance();
+				connectedUser = userManager.getInstance(this.number);
+				
+				//Open connection to called phone
+				callSocket = new Socket(server.getAddress(), server.getPort());
+				
+				cis = callSocket.getInputStream();
+				cos = callSocket.getOutputStream();
+				
+				dis = new DataInputStream(cis);
+				dos = new DataOutputStream(cos);
+				//TODO: Send first packet (Own phone number, SKUL magic, etc)
+				mes = messageFact.createMessage(phoneNumber.getBytes(), SkullMessage.MessageType.CALL);
+				
+				SkullMessageFactory.writeMessage(dos, mes);
+				
+				//read the reply
+				//TODO this should have pubkey
+				//TODO this should have exp
+				//TODO: Get first packet (should be BUSY or ACCEPT or whatever + Pub Key)
+				
+				mes = SkullMessageFactory.readMessage(dis);
+				
+				//TODO: Get first packets (should be CALL + Number)
+				calledNumber = new String(mes.getData());
+				if (mes.getType() != MessageType.CALL || calledNumber != number)
+				{
+					//TODO disconnect
+					//TODO Call handler to tell user that the connection is busy
+					//TODO Change call state to disconnected
+				}
+				
+				//TODO graceful failure if we don't get a PUBEXP, PUBMOD in order OR we get them ooo or something
+				//TODO idk.
+				if(mes.getType() == MessageType.PUBEXP)
+					pubExp = new BigInteger(mes.getData());
+	
+				//TODO: Check pubKey against stored public key hash
+				//TODO: If it's good, good
+				//TODO: If it's not good, notify the handler through a callback
+				//TODO: If it's new, notify the handler through a callback (different)
+				
+				if(connectedUser.getHash() == null)
+				{
+					//TODO Notify the user that this is a new hash
+					//TODO Wait for an update from them before checking this.
+				}
+				
+				if(!connectedUser.matchStoredPubKey(pubExp))
+				{
+					//TODO Notify the user the security of the call will be breached shortly
+					//TODO Wait for further information before proceeding very far
+				}
+				
+				mes = SkullMessageFactory.readMessage(dis);
+				
+				if(mes.getType() == MessageType.PUBMOD)
+					pubMod = new BigInteger(mes.getData());
+				else {
+					//TODO Disconnect; Enter accept state, print error.
+				}
+				RSAPublicKeySpec serverPubKeySpec = new RSAPublicKeySpec(pubMod, pubExp);
+				PublicKey serverPubKey = kf.generatePublic(serverPubKeySpec);
+				
+				//TODO: Generate a session key
+				//TODO: Generate a MAC key
+				//TODO: If rejected by user: Send 'reject' packet. Close connection.
+				//TODO: Send session, MAC key through encrypted thinger.
+	
+				//These are done by the call below:
+				//TODO: Start talk thread.
+				//TODO: Notify Activity the conversation has started.
+				//TODO: Kill this thread, any accept thread
+				SkullTalkService.this.startComm();
 			}
 			catch (IOException e)
 			{
+				e.printStackTrace();
+			} catch (InvalidKeyException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (NoSuchAlgorithmException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (InvalidKeySpecException e) {
+				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 		}
@@ -255,7 +292,6 @@ public class SkullTalkService{
 			KeyPair keys;
 			SkullMessage pubMod, privMod;
 			try {
-			
 				keys = keyManager.getKeys();
 				RSAPublicKey pub = (RSAPublicKey) keys.getPublic();
 				pubMod = messageFact.createMessage(pub.getModulus().toByteArray(), SkullMessage.MessageType.PUBMOD);
