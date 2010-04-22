@@ -32,7 +32,7 @@ import android.telephony.TelephonyManager;
 public class SkullTalkService{
 	
 	public static enum CallState
-	{LISTENING, CALLING, TALKING};
+	{LISTENING, CALLING, TALKING, STOPPED};
 	
 	private CallState callState;
 	private Thread callThread;
@@ -45,20 +45,39 @@ public class SkullTalkService{
 	private final String phoneNumber;
 	private Socket callSocket;
 	
+	private SwitchStationClient serverComm;
+	private String serverIP = "10.0.2.2";
+	private int serverPort = 9002;
 	
 	public SkullTalkService(Handler uiHandler, ContextWrapper context){
 		this.uiHandler = uiHandler;
 		
 		phoneNumber = ((TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE)).getLine1Number();
 		
+		serverComm = new SwitchStationClient();
 	}
 	
 	public void start(){
 		//TODO: Read public key from file
 		keyManager = new SkullKeyManager(appContext);
+	
+		serverComm.connect(serverIP, serverPort);
+		serverComm.register(phoneNumber, new byte[]{1,1,1,1}, 9001);
 		
 		// Contact server to register ip info
 		listen();
+	}
+	
+	public synchronized void stop(){
+		serverComm.disconnect();
+		if (callState == CallState.TALKING){
+			callState = CallState.STOPPED;
+			talkThread = null;
+			acceptThread = null;
+			callThread = null;
+			uiHandler.handleMessage(
+			Message.obtain(uiHandler, 2));
+		}
 	}
 	
 	public void hangup(){
@@ -121,14 +140,17 @@ public class SkullTalkService{
 	public class CallThread extends Thread{
 		private String number;
 		
-		private InetSocketAddress getAddressByNumber(String recNum)
-		{
-			InetSocketAddress recIp = null;
-			//TODO: Use SkullSwitchStation communication here.
-			//TODO: Open a socket to the server
-			//TODO: Send call request to SkullServer
-			//TODO: Get call request from server		
-			return recIp;
+		private InetSocketAddress getAddressByNumber(String recNum){
+			Object[] retvals = new Object[2];
+			if (serverComm.request(number, retvals) != 0){
+				return null;
+			}
+			int ip32 = ((Integer) retvals[0]).intValue();
+			String ipString =
+			Constants.ipBytesToString(
+			Constants.ipIntToBytes(ip32));
+			int port32 = ((Short) retvals[1]).shortValue();
+			return InetSocketAddress.createUnresolved(ipString, port32);
 		}
 		public CallThread(String number){
 			this.number = number;

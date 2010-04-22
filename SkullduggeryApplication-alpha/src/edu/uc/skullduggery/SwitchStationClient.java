@@ -13,8 +13,6 @@ import javax.net.ssl.*;
  */
 public class SwitchStationClient {
 
-	public static final int DEFAULT_PORT = 9002;
-	
 	private long sessionKey;
 	
 	private SocketAddress serverAddress;
@@ -30,19 +28,6 @@ public class SwitchStationClient {
 		this.sessionKey = sessionKey;
 	}
 
-	/**
-	 * Connects to the switch station server at the given address.
-	 * Current implementation just stores the address info and
-	 * contacts server for each request.
-	 * 
-	 * This version of connect uses the DEFAULT_PORT.
-	 * 
-	 * @param ip
-	 */
-	public void connect(String ip){
-		connect(ip, DEFAULT_PORT);
-	}
-	
 	/**
 	 * Connects to the switch station server at the given address.
 	 * Current implementation just stores the address info and
