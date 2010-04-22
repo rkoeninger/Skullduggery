@@ -5,12 +5,15 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.math.BigInteger;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.security.KeyPair;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.InvalidKeySpecException;
+
+import edu.uc.skullduggery.SkullMessage.MessageType;
 
 import android.content.Context;
 import android.content.ContextWrapper;
@@ -136,10 +139,11 @@ public class SkullTalkService{
 				
 			//TODO: Get the IP address of the recipient
 			InetSocketAddress receiver = this.getAddressByNumber(this.number);
-
 			
 			messageFact = SkullMessageFactory.getInstance();
 			SkullMessage mes; 
+			//Open connection to called phone
+			
 			callSocket = new Socket(receiver.getAddress(), receiver.getPort());
 			
 			InputStream cis = callSocket.getInputStream();
@@ -147,20 +151,49 @@ public class SkullTalkService{
 			
 			DataInputStream dis = new DataInputStream(cis);
 			DataOutputStream dos = new DataOutputStream(cos);
+			//TODO: Send first packet (Own phone number, SKUL magic, etc)
 			mes = messageFact.createMessage(phoneNumber.getBytes(), SkullMessage.MessageType.CALL);
 			
 			SkullMessageFactory.writeMessage(dos, mes);
 			
 			//read the reply
+			//TODO this should have pubkey
+			//TODO this should have exp
+			//TODO: Get first packet (should be BUSY or ACCEPT or whatever + Pub Key)
+			
+			mes = SkullMessageFactory.readMessage(dis);
+			BigInteger pubExp, pubMod;
+			
+			//TODO: Get first packets (should be CALL + Number)
+			String calledNumber = new String(mes.getData());
+			if (calledNumber != number || mes.getType() != MessageType.CALL)
+			{
+				//TODO disconnect
+				//TODO Call handler to tell user that the connection is busy
+				//TODO Change call state to disconnected
+			}
+			
+			
+			
+			//TODO graceful failure if we don't get a PUBEXP, PUBMOD in order OR we get them ooo or something
+			//TODO idk.
+			if(mes.getType() == MessageType.PUBEXP)
+				pubExp = new BigInteger(mes.getData());
+				
+			
 			mes = SkullMessageFactory.readMessage(dis);
 			
+			if(mes.getType() == MessageType.PUBMOD)
+				pubMod = new BigInteger(mes.getData());
+			else {
+				//TODO Disconnect; Enter accept state, print error.
+			}
+				
 			
 			
 			
 			
-			//TODO: Open connection to called phone
-			//TODO: Send first packet (Own phone number, SKUL magic, etc)
-			//TODO: Get first packet (should be BUSY or ACCEPT or whatever + Pub Key)
+			
 			//TODO: Check pubKey against stored public key hash
 
 			//TODO: If it's good, good
