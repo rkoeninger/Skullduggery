@@ -49,14 +49,12 @@ public class SkullUserInfoManager {
 	public synchronized SkullUserInfo getInstance(String number) throws NoSuchAlgorithmException
 	{
 		SkullUserInfo retUserInfo;
-		//sqldb.query(table, columns, selection, selectionArgs, groupBy, having, orderBy,limit)
 		String[] columns = {"UserID", "Number","Salt","PubKeyHash"};
 		String[] selectionArgs = {number};
 		
 		Cursor skullCurs = sqldb.query(SkullStorage ,columns,"Number = ?", selectionArgs,null,null,null);
 		if(skullCurs.moveToNext())
 		{
-
 			int	dataUserId = skullCurs.getInt(skullCurs.getColumnIndex("UserID"));
 			String dataNumber = skullCurs.getString(skullCurs.getColumnIndex("Number"));
 			byte[] dataSalt = skullCurs.getBlob(skullCurs.getColumnIndex("Salt"));
