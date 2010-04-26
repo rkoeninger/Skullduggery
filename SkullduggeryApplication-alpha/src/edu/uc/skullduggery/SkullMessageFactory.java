@@ -11,7 +11,6 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
 public class SkullMessageFactory {
-	private static final String HMAC = Constants.HASHALGORITHM;
 	
 	private SecretKey _hashKey;
 	private Mac _mac;
@@ -31,7 +30,7 @@ public class SkullMessageFactory {
 			KeyGenerator keygen;
 			SecretKey hashKey;
 		
-			keygen = KeyGenerator.getInstance(HMAC);
+			keygen = KeyGenerator.getInstance(Constants.HASHALGORITHM);
 			keygen.init(Constants.HASHKEYSIZE);
 			hashKey = keygen.generateKey();
 			return new SkullMessageFactory(hashKey);
@@ -49,8 +48,8 @@ public class SkullMessageFactory {
 	
 	public SkullMessageFactory(SecretKey hashKey) throws NoSuchAlgorithmException, InvalidKeyException
 	{
-		_hashKey = new SecretKeySpec(hashKey.getEncoded(), HMAC);
-		_mac = Mac.getInstance(HMAC);
+		_hashKey = new SecretKeySpec(hashKey.getEncoded(), Constants.HASHALGORITHM);
+		_mac = Mac.getInstance(Constants.HASHALGORITHM);
 		_mac.init(_hashKey);
 	}
 	
@@ -73,30 +72,5 @@ public class SkullMessageFactory {
 		
 		dataHash = _mac.doFinal(messageData);
 		return java.util.Arrays.equals(messageHash, dataHash);
-	}
-	
-	public static void writeMessage(DataOutputStream dos, SkullMessage mes) throws IOException
-	{
-		byte[] hash = mes.getHash();
-		byte[] data = mes.getData();
-		SkullMessage.MessageType mesType = mes.getType();
-		
-		dos.write(Constants.MAGICBYTES);
-		dos.write(hash);
-		dos.writeByte((byte) mesType.ordinal());
-		dos.writeInt(data.length);
-		dos.write(data);
-	}
-	public static SkullMessage readMessage(InputStream s)
-	{
-		SkullMessage rMessage = null;
-		
-		//TODO: Read MAC from the stream.
-		//TODO: Read Type from the stream.
-		//TODO: Read data length from the stream.
-		//TODO: Read data from the stream.
-		//TODO: Construct a SkullMessage
-		//TODO: Return our SkullMessage
-		return rMessage;
 	}
 }

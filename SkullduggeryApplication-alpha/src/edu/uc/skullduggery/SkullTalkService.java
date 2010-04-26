@@ -1,39 +1,61 @@
 package edu.uc.skullduggery;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.math.BigInteger;
-import java.net.InetSocketAddress;
-import java.net.Socket;
-import java.security.InvalidKeyException;
-import java.security.KeyFactory;
-import java.security.KeyPair;
-import java.security.NoSuchAlgorithmException;
-import java.security.PublicKey;
-import java.security.interfaces.RSAPublicKey;
-import java.security.spec.InvalidKeySpecException;
-import java.security.spec.RSAPublicKeySpec;
-
+import java.io.*;
+import java.math.*;
+import java.net.*;
+import java.security.*;
+import java.security.interfaces.*;
+import java.security.spec.*;
+import java.util.Arrays;
 import edu.uc.skullduggery.SkullMessage.MessageType;
-
-import android.content.Context;
-import android.content.ContextWrapper;
-import android.os.Handler;
-import android.os.Message;
+import android.content.*;
+import android.media.*;
+import android.os.*;
 import android.telephony.TelephonyManager;
+import android.util.Log;
 
-/**
- * This class is a collection of threads that constitute the process
- * of an encrypted conversation and the data related to it.
- * 
- * A single instance should be all that is necessary for as long as the
- * app runs.
- */
+// TODO: Several here:      *Don't remove this T0D0 marker*
+
+//       Rewrite documentation and COMMENTS as sections are changed.
+//       All comments will need constant editing.
+
+//       Call state infrastructure and interface methods
+//       i.e. (start/stop/hangup/startComm/endComm)
+//       Need to be re-written or removed
+
+//       Communication is currently being done line by line
+//        - that means, SkullMessages are not being used.
+//       Neither are the writeMessage and readMessage methods.
+//       Rewrite may be necessary.
+
+//       SkullMessage or SkullMessage factory need to have encryption built
+//       into them. If we had a block of data to transmit, we could call
+//       SkullMessageFactory.setCipherInfo(...);
+//       SkullMessageFactory.getMessage(data);
+
+
+//       The handshake method could still use alot of work
+//        - I didn't understand key exchange very well
+//       So...
+//       To keep this simple,
+//       Each phone generates/loads it's keys
+//       and sends PUB-key, MAC, whatever else in one round.
+//       Each phone sends one packet.
+//       Following this exchange, we are ready to talk.
+
+//       I ignored the idea of (checking cached key for security reasons)
+//       for development speed reasons.
 
 public class SkullTalkService{
+	
+	/* Logging tag for Android logcat */
+	private static final String TAG = "SkullTalk";
+	
+	/* Audio encoding parameters */
+	private static final int sampleRate = 8000;
+	private static final int channelConfigIn = AudioFormat.CHANNEL_IN_MONO;
+	private static final int channelConfigOut = AudioFormat.CHANNEL_OUT_MONO;
+	private static final int encoding = AudioFormat.ENCODING_PCM_16BIT;
 	
 	public static enum CallState
 	{LISTENING, CALLING, TALKING, STOPPED};
@@ -51,6 +73,16 @@ public class SkullTalkService{
 	private final String phoneNumber;
 	private Socket callSocket;
 	
+	/**
+	 * Information about the remote phone current talking with.
+	 * Specifically, the phone number.
+	 * Should be null when callState does not equal TALKING.
+	 */
+	private String remotePhoneNumber;
+	
+	/**
+	 * Contact info and interface for the proxy (switch station) server.
+	 */
 	private SwitchStationClient serverComm;
 	private String serverIP = "10.0.2.2";
 	private int serverPort = 9002;
@@ -58,9 +90,18 @@ public class SkullTalkService{
 	public SkullTalkService(Handler uiHandler, ContextWrapper context){
 		this.uiHandler = uiHandler;
 		
-		phoneNumber = ((TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE)).getLine1Number();
+		phoneNumber = ((TelephonyManager) context.getSystemService(
+		Context.TELEPHONY_SERVICE)).getLine1Number();
 		
 		serverComm = new SwitchStationClient();
+	}
+	
+	public synchronized CallState getCallState(){
+		return callState;
+	}
+	
+	public synchronized void setCallState(CallState state){
+		callState = state;
 	}
 	
 	public void start(){
@@ -68,7 +109,9 @@ public class SkullTalkService{
 		keyManager = new SkullKeyManager(appContext);
 		userManager = new SkullUserInfoManager(appContext);
 		serverComm.connect(serverIP, serverPort);
-		serverComm.register(phoneNumber, new byte[]{1,1,1,1}, 9001);
+		
+		// TODO: How to find our own contact info?
+//		serverComm.register(phoneNumber, new byte[]{1,1,1,1}, 9001);
 		
 		// Contact server to register ip info
 		listen();
@@ -105,10 +148,12 @@ public class SkullTalkService{
 	//gets called initially by start() or constructor
 	private synchronized void listen(){
 		callState = CallState.LISTENING;
-		acceptThread = new AcceptThread();
+		acceptThread = new AcceptThread(9002);
 		acceptThread.start();
 	}
 
+	// TODO: All this infrastructure needs to be re-written
+	
 	//called from callThread or acceptThread once handshake
 	// is completed
 	private synchronized void startComm(){
@@ -132,218 +177,423 @@ public class SkullTalkService{
 		listen();
 	}
 	
+	private static void readMagic(DataInputStream dis) throws IOException{
+		byte[] magic = new byte[Constants.MAGICBYTES.length];
+		dis.readFully(magic, 0, magic.length);
+		if (! Arrays.equals(magic, Constants.MAGICBYTES))
+			throw new IOException("Wrong magic bytes");
+	}
+	
+	private static void readType(DataInputStream dis, MessageType expectedType)
+	throws IOException{
+		if (dis.readByte() != MessageType.CALL.ordinal()){
+			throw new IOException("Unexpected packet type");
+		}
+	}
+	
+	private void writeMessage(DataOutputStream dos, SkullMessage mes)
+	throws IOException{
+		byte[] hash = mes.getHash();
+		byte[] data = mes.getData();
+		SkullMessage.MessageType mesType = mes.getType();
+		
+		dos.write(Constants.MAGICBYTES);
+		dos.write(hash);
+		dos.writeByte((byte) mesType.ordinal());
+		dos.writeInt(data.length);
+		dos.write(data);
+	}
+	
+	private SkullMessage readMessage(InputStream s) throws IOException{
+		SkullMessage rMessage = null;
+		
+		//      Read MAC from the stream.
+		//      Read Type from the stream.
+		//      Read data length from the stream.
+		//      Read data from the stream.
+		//      Construct a SkullMessage
+		//      Return our SkullMessage
+		return rMessage;
+	}
+	
 	/**
-	 * Either attempts to open a socket on receiving phone
-	 * or accesses "switching station" server. In it's own thread
-	 * so the delay in making connection doesn't hang service.
-	 * 
-	 * Started by SkullTalkService when the user makes a call.
-	 * 
-	 * Stopped by itself when the connection to the other phone
-	 * has been established or the recipient is unreachable or if the
-	 * user hangs-up prematurely.
+	 * Key generation and exchange occurs here.
 	 */
+	private void performHandshake(DataInputStream dis, DataOutputStream dos)
+	throws IOException, InvalidKeySpecException {
+
+		/*
+		 * Generate local phone's keys for this conversation.
+		 */
+		KeyFactory keygen;
+		KeyPair localKeys;
+		BigInteger localPubMod, localPubExp;
+		try {
+			keygen = KeyFactory.getInstance(Constants.ASYMALGORITHM);
+			localKeys = keyManager.getKeys();
+			RSAPublicKey pub = (RSAPublicKey) localKeys.getPublic();
+			localPubMod = pub.getModulus();
+			localPubExp = pub.getPublicExponent();
+		} catch (NoSuchAlgorithmException nsae){
+			throw new Error(nsae); // Can't recover from this
+		}
+		
+		/*
+		 * Write our public key Modulus and Exponent.
+		 */
+		dos.write(Constants.MAGICBYTES);
+		dos.write((byte) MessageType.PUBMOD.ordinal());
+		dos.writeInt(localPubMod.toByteArray().length);
+		dos.write(localPubMod.toByteArray());
+		dos.write(Constants.MAGICBYTES);
+		dos.write((byte) MessageType.PUBEXP.ordinal());
+		dos.writeInt(localPubExp.toByteArray().length);
+		dos.write(localPubExp.toByteArray());
+		
+		/*
+		 * Read remote phone's public key Modulus and Exponent.
+		 */
+		readMagic(dis);
+		readType(dis, MessageType.PUBMOD);
+		byte[] remotePubModBytes = new byte[dis.readInt()];
+		dis.readFully(remotePubModBytes);
+		readMagic(dis);
+		readType(dis, MessageType.PUBEXP);
+		byte[] remotePubExpBytes = new byte[dis.readInt()];
+		dis.readFully(remotePubExpBytes);
+		BigInteger remotePubMod = new BigInteger(remotePubModBytes);
+		BigInteger remotePubExp = new BigInteger(remotePubExpBytes);
+		
+		/*
+		 * Generate a public key for the remote phone from the
+		 * MOD and EXP parts received.
+		 */
+		RSAPublicKeySpec remotePubKeySpec =
+		new RSAPublicKeySpec(remotePubMod, remotePubExp);
+		PublicKey remotePublicKey = keygen.generatePublic(remotePubKeySpec);
+		
+		// TODO: figure this out:
+			// Generate a session key
+			// Generate a MAC key
+			// If rejected by user: Send 'reject' packet. Close connection.
+			// Send session, MAC key through encrypted thinger.
+
+	}
+	
 	public class CallThread extends Thread{
-		private String number;
-		
-		private InetSocketAddress getAddressByNumber(String recNum){
-			Object[] retvals = new Object[2];
-			if (serverComm.request(number, retvals) != 0){
-				return null;
-			}
-			int ip32 = ((Integer) retvals[0]).intValue();
-			String ipString =
-			Constants.ipBytesToString(
-			Constants.ipIntToBytes(ip32));
-			int port32 = ((Short) retvals[1]).shortValue();
-			return InetSocketAddress.createUnresolved(ipString, port32);
-		}
-		public CallThread(String number){
-			this.number = number;
-		}
-		
+		private String remotePhoneNumber;
+		public CallThread(String number){ remotePhoneNumber = number; }
 		public void run(){
 			try{
-				BigInteger pubExp = null;
-				BigInteger pubMod = null;
-				InetSocketAddress server;
-				SkullUserInfo connectedUser;
-				SkullMessage mes;
-				InputStream cis;
-				OutputStream cos;
-				DataInputStream dis;
-				DataOutputStream dos;
-				String calledNumber;
-				KeyFactory kf = KeyFactory.getInstance(Constants.ASYMALGORITHM);
 				
-				//Get the IP address of the recipient
-				server = this.getAddressByNumber(this.number);
+				/*
+				 * Get the contact info of the remote phone from server.
+				 * If could not get info, report error to UI and quit.
+				 */
+				Object[] retvals = new Object[2];
+				serverComm.request(remotePhoneNumber, retvals);
+				int ip32 = ((Integer) retvals[0]).intValue();
+				String ipString =
+				Constants.ipBytesToString(
+				Constants.ipIntToBytes(ip32));
+				int port32 = ((Short) retvals[1]).shortValue();
+				InetSocketAddress remotePhoneAddress =
+				InetSocketAddress.createUnresolved(ipString, port32);
 				
-				if(server == null)
-				{
-					//TODO Notify the user the receiver does not exist
-					//TODO Disconnect
+				/* 
+				 * Open connection to remote phone.
+				 * This is analogous to dialing.
+				 * Makes 300 connect attempts at 100ms a piece for 30s timeout.
+				 * Open input and output streams.
+				 * If could not connect, report error to UI and cleanup + quit.
+				 */
+				callSocket = new Socket();
+				for (int x = 0; x < 300; ++x){
+					try{
+						callSocket.connect(remotePhoneAddress, 100);
+					}catch (SocketTimeoutException ste){
+						continue;
+					}catch (Exception e){
+						throw new Error(e);
+					}
 				}
-				
-				messageFact = SkullMessageFactory.getInstance();
-				connectedUser = userManager.getInstance(this.number);
-				
-				//Open connection to called phone
-				callSocket = new Socket(server.getAddress(), server.getPort());
-				
-				cis = callSocket.getInputStream();
-				cos = callSocket.getOutputStream();
-				
-				dis = new DataInputStream(cis);
-				dos = new DataOutputStream(cos);
-				//TODO: Send first packet (Own phone number, SKUL magic, etc)
-				mes = messageFact.createMessage(phoneNumber.getBytes(), SkullMessage.MessageType.CALL);
-				
-				SkullMessageFactory.writeMessage(dos, mes);
-				
-				//read the reply
-				//TODO this should have pubkey
-				//TODO this should have exp
-				//TODO: Get first packet (should be BUSY or ACCEPT or whatever + Pub Key)
-				
-				mes = SkullMessageFactory.readMessage(dis);
-				
-				//TODO: Get first packets (should be CALL + Number)
-				calledNumber = new String(mes.getData());
-				if (mes.getType() != MessageType.CALL || calledNumber != number)
-				{
-					//TODO disconnect
-					//TODO Call handler to tell user that the connection is busy
-					//TODO Change call state to disconnected
+				if (! callSocket.isConnected()){
+					throw new SocketException();
 				}
-				
-				//TODO graceful failure if we don't get a PUBEXP, PUBMOD in order OR we get them ooo or something
-				//TODO idk.
-				if(mes.getType() == MessageType.PUBEXP)
-					pubExp = new BigInteger(mes.getData());
+				DataInputStream dis =
+				new DataInputStream(callSocket.getInputStream());
+				DataOutputStream dos =
+				new DataOutputStream(callSocket.getOutputStream());
 	
-				//TODO: Check pubKey against stored public key hash
-				//TODO: If it's good, good
-				//TODO: If it's not good, notify the handler through a callback
-				//TODO: If it's new, notify the handler through a callback (different)
+				/*
+				 * The calling phone first sends a CALL packet containing
+				 * info about the caller and calling phone.
+				 */
+				// TODO: Rewrite this as a SkullMessage
+				dos.write(Constants.MAGICBYTES);
+				dos.write((byte) MessageType.CALL.ordinal());
+				dos.writeInt(phoneNumber.length());
+				dos.write(phoneNumber.getBytes());
 				
-				if(connectedUser.getHash() == null)
-				{
-					//TODO Notify the user that this is a new hash
-					//TODO Wait for an update from them before checking this.
+				/*
+				 * Make sure we receive an ACCEPT packet in return or fail.
+				 */
+				// TODO: Rewrite this as a SkullMessage
+				readMagic(dis);
+				byte messageType = dis.readByte();
+				if (messageType == MessageType.BUSY.ordinal()){
+					throw new IOException("Remote phone busy");
 				}
-				
-				if(!connectedUser.matchStoredPubKey(pubExp))
-				{
-					//TODO Notify the user the security of the call will be breached shortly
-					//TODO Wait for further information before proceeding very far
+				if (messageType != MessageType.ACCEPT.ordinal()){
+					throw new IOException("Unexpected packet type");
 				}
+
+				/*
+				 * Both phones at this point perform the handshake.
+				 * The handshake is the same for
+				 * calling (CallThread) and receiving (AcceptThread)
+				 * phones.
+				 */
+				performHandshake(dis, dos);
 				
-				mes = SkullMessageFactory.readMessage(dis);
+				/*
+				 * At this point, we have exchanged keys and are ready
+				 * to talk.
+				 * Start TalkThread and end.
+				 */
+				// TODO: this isn't finished,
+				//       talk thread needs to be given cipher in constructor
+				//       and infrastructure needs to be built.
+				talkThread = new TalkThread();
+				talkThread.start();
+				callThread = null;
 				
-				if(mes.getType() == MessageType.PUBMOD)
-					pubMod = new BigInteger(mes.getData());
-				else {
-					//TODO Disconnect; Enter accept state, print error.
+			}catch (InvalidKeySpecException ikse){
+				// TODO: this error is possibly caused by other
+				//       phone sending bad key parts
+				//       notify user
+				if (callSocket.isConnected()){
+					try{ callSocket.close(); }
+					catch (IOException ioe2){}
 				}
-				RSAPublicKeySpec serverPubKeySpec = new RSAPublicKeySpec(pubMod, pubExp);
-				PublicKey serverPubKey = kf.generatePublic(serverPubKeySpec);
-				
-				//TODO: Generate a session key
-				//TODO: Generate a MAC key
-				//TODO: If rejected by user: Send 'reject' packet. Close connection.
-				//TODO: Send session, MAC key through encrypted thinger.
-	
-				//These are done by the call below:
-				//TODO: Start talk thread.
-				//TODO: Notify Activity the conversation has started.
-				//TODO: Kill this thread, any accept thread
-				SkullTalkService.this.startComm();
-			}
-			catch (IOException e)
-			{
-				e.printStackTrace();
-			} catch (InvalidKeyException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (NoSuchAlgorithmException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (InvalidKeySpecException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+				callSocket = null;
+			}catch (IOException ioe){
+				// TODO: Notify user of connect error
+				//       Can do error-specific exception handling later
+				if (callSocket.isConnected()){
+					try{ callSocket.close(); }
+					catch (IOException ioe2){}
+				}
+				callSocket = null;
 			}
 		}
 	}
 	
-	/**
-	 * Accepts an incoming call, either by polling server
-	 * or answering a ServerSocket. Notifies SkullTalkService
-	 * when a call has been detected.
-	 * 
-	 * Started by SkullTalkService initially or once a call
-	 * has ended.
-	 * 
-	 * Stopped once a call has started.
-	 */
 	public class AcceptThread extends Thread{
+		private int listenPort;
+		public AcceptThread(int port){ listenPort = port; }
 		public void run(){
 			
-			KeyPair keys;
-			SkullMessage pubMod, privMod;
-			try {
-				keys = keyManager.getKeys();
-				RSAPublicKey pub = (RSAPublicKey) keys.getPublic();
-				pubMod = messageFact.createMessage(pub.getModulus().toByteArray(), SkullMessage.MessageType.PUBMOD);
-				privMod = messageFact.createMessage(pub.getPublicExponent().toByteArray(), SkullMessage.MessageType.PUBEXP);
-				
-			} catch (NoSuchAlgorithmException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (InvalidKeySpecException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+			/*
+			 * Initialize server socket.
+			 * Set listen port and timeout.
+			 * If this fails, then we won't be able to receive calls. 
+			 */
+			ServerSocket serverSocket;
+			try{
+				serverSocket = new ServerSocket(listenPort);
+				serverSocket.setSoTimeout(100);
+			}catch (IOException e){
+				throw new Error(); // Can't continue
 			}
-			
-			//TODO: Accept socket connection
-			//TODO: Open socket between phones
-			//TODO: Read first packet
-			//TODO: If talking:
-				//TODO: Send reject packet
-				//TODO: hang up
-			//TODO: If not talking:
-			//TODO: Reply with public key, own phone number, etc.
-			//TODO: Wait for (encrypted) response; should be session key, MAC key
-			//TODO: May be 'reject' packet.
-			//TODO: Read Cipher'd stream
-			
-			//SkullTalkService does these:
-			//TODO: Start Talk Thread
-			//TODO: Notify Activity that call has started through a callback
-			SkullTalkService.this.startComm();
+
+			/*
+			 * Main call accept loop.
+			 * Each iteration, it attempts to accept an incoming connection
+			 * and respond.
+			 * If the accept() call times-out, the loop can check for
+			 * application status changes (closing) and try to accept() again.
+			 */
+			while (callState != CallState.STOPPED){
+				Socket newConnection;
+				
+				try{
+					
+					/*
+					 * Wait for a connection.
+					 * If connection times-out an exception is thrown
+					 * and we just loop again.
+					 */
+					newConnection = serverSocket.accept();
+					DataInputStream dis =
+					new DataInputStream(newConnection.getInputStream());
+					DataOutputStream dos =
+					new DataOutputStream(newConnection.getOutputStream());
+					
+					/*
+					 * Read the initial CALL packet sent by the caller.
+					 */
+					// TODO: rewrite this as receiving a SkullMessage
+					readMagic(dis);
+					readType(dis, MessageType.CALL);
+					int remotePhoneNumberLength = dis.readInt();
+					byte[] remotePhoneNumberBytes =
+					new byte[remotePhoneNumberLength];
+					dis.readFully(remotePhoneNumberBytes);
+					remotePhoneNumber = new String(remotePhoneNumberBytes);
+
+					/*
+					 * After receiving the CALL packet,
+					 * return an ACCEPT or a BUSY packet.
+					 */
+					if (callState == CallState.TALKING){
+						// TODO: rewrite this as sending a SkullMessage
+						dos.write(Constants.MAGICBYTES);
+						dos.write((byte) MessageType.BUSY.ordinal());
+						continue;
+					} else {
+						// TODO: rewrite this as sending a SkullMessage
+						dos.write(Constants.MAGICBYTES);
+						dos.write((byte) MessageType.ACCEPT.ordinal());
+					}
+					
+					/*
+					 * Both phones at this point perform the handshake.
+					 * The handshake is the same for
+					 * calling (CallThread) and receiving (AcceptThread)
+					 * phones.
+					 */
+					performHandshake(dis, dos);
+					
+					/*
+					 * At this point, we have exchanged keys and are ready
+					 * to talk.
+					 * Start TalkThread and end.
+					 */
+					// TODO: this isn't finished,
+					//       talk thread needs to be
+					//           given cipher in constructor
+					//       and infrastructure needs to be built.
+					talkThread = new TalkThread();
+					talkThread.start();
+					acceptThread = null;
+					
+				}catch (SocketTimeoutException ste){
+					if (callState == CallState.STOPPED){
+						acceptThread = null;
+						return;
+					}
+					continue; // Loop again if timeout
+				}catch (InvalidKeySpecException ikse){
+					// TODO: likely caused by bad key parts sent
+					//       by remote phone, perhaps give user this
+					//       specific error message?
+					if (callSocket.isConnected()){
+						try{ callSocket.close(); }
+						catch (IOException ioe2){}
+					}
+					callSocket = null;
+				}catch (IOException ioe){
+					// TODO: Handle errors somehow, report to user
+					if (callSocket.isConnected()){
+						try{ callSocket.close(); }
+						catch (IOException ioe2){}
+					}
+					callSocket = null;
+				}
+			}
 		}
 	}
 	
-	/**
-	 * Reads data from microphone, encrypts and transmits
-	 * voice packets.
-	 * 
-	 * Reads data from socket, decrypts and plays voice packets.
-	 * 
-	 * Started by SkullTalkService after AcceptThread
-	 * notifies it of an incoming call.
-	 * 
-	 * Stopped by SkullTalkService if user hangs up or
-	 * if ReceiveThread gets a hang-up signal.
-	 */
 	public class TalkThread extends Thread{
 		public void run(){
-			// check that the call is still in progress and socket is open
-			if (SkullTalkService.this.callState != CallState.TALKING){
-				return;
+
+			DataInputStream in;
+			DataOutputStream out;
+			AudioTrack aout = null;
+			AudioRecord ain = null;
+			
+			try{
+				
+				byte[] buf = new byte[4000];
+				int bytesRead = 0;
+				long localPacketSeq = 0;
+				long remotePacketSeq = 0;
+				
+				/*
+				 * Open streams and audio tracks.
+				 */
+				in = new DataInputStream(callSocket.getInputStream());
+				out = new DataOutputStream(callSocket.getOutputStream());
+				aout = new AudioTrack(AudioManager.STREAM_VOICE_CALL,
+						sampleRate, channelConfigOut, encoding, buf.length,
+						AudioTrack.MODE_STREAM);
+				ain = new AudioRecord(
+						MediaRecorder.AudioSource.VOICE_RECOGNITION,
+						sampleRate, channelConfigIn, encoding, buf.length);
+				ain.startRecording();
+
+				// TODO: This loop needs to respond to changes in call state
+				while (callSocket.isConnected()
+						&& !callSocket.isClosed()
+						&& ain.getRecordingState() ==
+						AudioRecord.RECORDSTATE_RECORDING) {
+
+					bytesRead = ain.read(buf, 0, buf.length);
+					// TODO: encrypt here
+					//       write magic?
+					//       Re-write as a SkullMessage
+					out.writeLong(localPacketSeq);
+					out.writeInt(bytesRead);
+
+					if (bytesRead < 0) break;
+
+					out.write(buf, 0, bytesRead);
+					remotePacketSeq = in.readLong();
+					bytesRead = in.readInt();
+
+					if (bytesRead < 0) break;
+
+					if (localPacketSeq != remotePacketSeq) {
+						Log.e(TAG, "localPacketSeq=" + localPacketSeq +
+						" remotePacketSeq=" + remotePacketSeq);
+						throw new Error("unsynched");
+					}
+
+					in.readFully(buf, 0, bytesRead);
+					// TODO: decrypt here
+					//       read magic?
+					//       Rewrite as a SkullMessage
+					aout.write(buf, 0, bytesRead);
+
+					if (aout.getPlayState() != AudioTrack.PLAYSTATE_PLAYING)
+						aout.play();
+
+					localPacketSeq += 1;
+
+				}
+
+				if (! callSocket.isClosed()){
+					callSocket.close();
+					callSocket = null;
+				}
+				
+			}catch (IOException ioe){
+				// TODO: cleanup and notify user of communication error
 			}
-			//TODO: Import what we've learned from CommTest project into this class.
-			SkullTalkService.this.endComm();
+			
+			if (ain != null)
+				if (ain.getRecordingState() ==
+				AudioRecord.RECORDSTATE_RECORDING)
+					ain.stop();
+
+			if (aout != null)
+				if (aout.getPlayState() ==
+				AudioTrack.PLAYSTATE_PLAYING)
+					aout.stop();
+
+			talkThread = null;
+			
 		}
 	}
 }

@@ -56,7 +56,7 @@ public class SwitchStationClient {
 	 * the makeRequest method will handle them.
 	 */
 	protected interface Processor {
-		public int process(Socket connection) throws IOException;
+		public void process(Socket connection) throws IOException;
 	}
 	
 	/**
@@ -67,17 +67,13 @@ public class SwitchStationClient {
 	 * @param proc
 	 * @return status code from server
 	 */
-	protected int makeRequest(Processor proc){
+	protected void makeRequest(Processor proc) throws IOException{
 
 		/*
 		 * Get an SSL socket. Could throw an exception; report error if so.
 		 */
 		Socket connection;
-		try{
-			connection = SSLSocketFactory.getDefault().createSocket();
-		}catch (IOException ioe){
-			return 1; // Cannot connect to host
-		}
+		connection = SSLSocketFactory.getDefault().createSocket();
 		
 		/*
 		 * Make 300 attempts to connect, each lasting no longer than 100ms.
@@ -90,21 +86,17 @@ public class SwitchStationClient {
 				connection.connect(this.serverAddress, 100);
 			}catch (SocketTimeoutException ste){
 				continue;
-			}catch (IOException ioe){
-				break;
 			}
 		}
 		if (! connection.isConnected()){
-			return 1; // Cannot connect to host
+			throw new IOException("Able to contact server");
 		}
 		
 		/*
 		 * Run the request code. Handle errors.
 		 */
 		try{
-			return proc.process(connection);
-		}catch (IOException ioe){
-			return 1; // Communication error
+			proc.process(connection);
 		}finally{
 			if (connection.isConnected()){
 				try {
@@ -129,14 +121,15 @@ public class SwitchStationClient {
 	 * @param port32
 	 * @return status
 	 */
-	public int register(final String phoneNum, byte[] ipBytes, int port32){
+	public void register(final String phoneNum, byte[] ipBytes, int port32)
+	throws IOException{
 		final int ip = Constants.ipBytesToInt(ipBytes);
 		final short port = (short) port32;
 		
 		final Object[] retvals = new Object[1];
 		
-		int status = makeRequest(new Processor(){
-			public int process(Socket connection) throws IOException{
+		makeRequest(new Processor(){
+			public void process(Socket connection) throws IOException{
 				DataInputStream in = new DataInputStream(
 				connection.getInputStream());
 				DataOutputStream out = new DataOutputStream(
@@ -150,17 +143,14 @@ public class SwitchStationClient {
 				
 				byte status = in.readByte();
 				if (status != 0){
-					return status; // Server error in processing packet
+					throw new IOException("Request failed");
 				}
 				
 				retvals[0] = new Long(in.readLong());
-				
-				return 0; // Success
 			}
 		});
 		
 		sessionKey = ((Long) retvals[0]).longValue();
-		return status;
 	}
 	
 	/**
@@ -178,9 +168,10 @@ public class SwitchStationClient {
 	 * @param retvals
 	 * @return status
 	 */
-	public int request(final String phoneNum, final Object[] retvals){
-		int status = makeRequest(new Processor(){
-			public int process(Socket connection) throws IOException{
+	public void request(final String phoneNum, final Object[] retvals)
+	throws IOException{
+		makeRequest(new Processor(){
+			public void process(Socket connection) throws IOException{
 				DataInputStream in = new DataInputStream(
 				connection.getInputStream());
 				DataOutputStream out = new DataOutputStream(
@@ -192,16 +183,13 @@ public class SwitchStationClient {
 				
 				byte status = in.readByte();
 				if (status != 0){
-					return status; // Server error in processing packet
+					throw new IOException("Request failed");
 				}
 				
 				retvals[0] = new Integer(in.readInt());
 				retvals[1] = new Short(in.readShort());
-				return 0; // Success
 			}
 		});
-		
-		return status;
 	}
 
 	/**
@@ -213,9 +201,9 @@ public class SwitchStationClient {
 	 * 
 	 * @return status
 	 */
-	public int remove(){
-		int status = makeRequest(new Processor(){
-			public int process(Socket connection) throws IOException{
+	public void remove() throws IOException{
+		makeRequest(new Processor(){
+			public void process(Socket connection) throws IOException{
 				DataInputStream in = new DataInputStream(
 				connection.getInputStream());
 				DataOutputStream out = new DataOutputStream(
@@ -226,14 +214,10 @@ public class SwitchStationClient {
 				
 				byte status = in.readByte();
 				if (status != 0){
-					return status; // Server error in processing packet
+					throw new IOException("Request failed");
 				}
-				
-				return 0; // Success
 			}
 		});
-		
-		return status;
 	}
 	
 	/**
@@ -248,12 +232,13 @@ public class SwitchStationClient {
 	 * @param port32
 	 * @return
 	 */
-	public int update(final String phoneNum, byte[] ipBytes, int port32){
+	public void update(final String phoneNum, byte[] ipBytes, int port32)
+	throws IOException{
 		final int ip = Constants.ipBytesToInt(ipBytes);
 		final short port = (short) port32;
 		
-		int status = makeRequest(new Processor(){
-			public int process(Socket connection) throws IOException{
+		makeRequest(new Processor(){
+			public void process(Socket connection) throws IOException{
 				DataInputStream in = new DataInputStream(
 				connection.getInputStream());
 				DataOutputStream out = new DataOutputStream(
@@ -268,14 +253,10 @@ public class SwitchStationClient {
 				
 				byte status = in.readByte();
 				if (status != 0){
-					return status; // Server error in processing packet
+					throw new IOException("Request failed");
 				}
-				
-				return 0; // Success
 			}
 		});
-		
-		return status;
 	}
 	
 }

@@ -34,7 +34,7 @@ public class SkullKeyManager {
 		_sqldb.execSQL(sql_createKeyTable);
 	}
 	
-	public KeyPair getKeys() throws NoSuchAlgorithmException, InvalidKeySpecException
+	public KeyPair getKeys() throws InvalidKeySpecException
 	{
 		_sqldb.beginTransaction();
 		String[] columns = {"KeyID", "Modulus", "PublicExponent", "PrivateExponent"};
@@ -51,7 +51,12 @@ public class SkullKeyManager {
 		Cursor keyCursor = _sqldb.query(SkullKeys, columns, selection, selectionArgs, groupBy, having, orderBy, limit);
 		if(keyCursor.moveToNext())
 		{
-			KeyFactory kf = KeyFactory.getInstance(RSA);
+			KeyFactory kf;
+			try{
+				kf = KeyFactory.getInstance(RSA);
+			}catch (NoSuchAlgorithmException nsae){
+				throw new Error(nsae);
+			}
 			RSAPublicKeySpec pubKeySpec;
 			RSAPrivateKeySpec privKeySpec;
 			
@@ -87,7 +92,11 @@ public class SkullKeyManager {
 			ContentValues insertArgs;
 			
 			//Generate public, private keys
-			kpg = KeyPairGenerator.getInstance(RSA);
+			try{
+				kpg = KeyPairGenerator.getInstance(RSA);
+			}catch (NoSuchAlgorithmException nsae){
+				throw new Error(nsae);
+			}
 			kpg.initialize(RSAKeySize);
 			kp = kpg.generateKeyPair();
 			//Write keys to db

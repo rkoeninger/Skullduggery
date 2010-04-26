@@ -8,6 +8,8 @@ public class SkullMessage {
 		PUBEXP,
 		SESKEY,
 		MESKEY,
+		ACCEPT,
+		REJECT,
 		BUSY,
 		HANGUP;
 	}

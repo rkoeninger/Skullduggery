@@ -53,12 +53,13 @@ public class Constants {
 		try{
 			return InetAddress.getByName(ipString).getAddress();
 		}catch (IOException ioe){
-			StringTokenizer tokens = new StringTokenizer(ipString);
-			byte[] ipBytes = new byte[4];
-			for (int x = 0; x < ipBytes.length; ++x){
-				ipBytes[x] = (byte) Integer.parseInt(tokens.nextToken());
-			}
-			return ipBytes;
+			String[] tokens = ipString.split(".");
+			return new byte[]{
+			(byte) Integer.parseInt(tokens[0]),
+			(byte) Integer.parseInt(tokens[1]),
+			(byte) Integer.parseInt(tokens[2]),
+			(byte) Integer.parseInt(tokens[3]),
+			};
 		}
 	}
 	public static String ipBytesToString(byte[] ipBytes){
