@@ -188,7 +188,7 @@ public class SkullTalkService{
 	 */
 	private static void readType(DataInputStream dis, MessageType expectedType)
 	throws IOException{
-		if (dis.readByte() != MessageType.CALL.ordinal()){
+		if (dis.readByte() != expectedType.ordinal()){
 			throw new IOException("Unexpected packet type");
 		}
 	}
