@@ -13,6 +13,7 @@ import android.content.*;
 import android.media.*;
 import android.os.*;
 import android.telephony.TelephonyManager;
+import android.util.*;
 
 // TODO: Several here:      *Don't remove this T0D0 marker*
 
@@ -100,6 +101,7 @@ public class SkullTalkService{
 	
 	public SkullTalkService(Handler uiHandler, ContextWrapper context){
 		this.uiHandler = uiHandler;
+		this.appContext = context;
 		phoneNumber = ((TelephonyManager) context.getSystemService(
 		Context.TELEPHONY_SERVICE)).getLine1Number();
 		serverComm = new SwitchStationClient();
@@ -370,9 +372,11 @@ public class SkullTalkService{
 				internalStartTalking();
 				
 			}catch (InvalidKeySpecException ikse){
+				Log.e(TAG, "error'd", ikse);
 				uiHandler.sendMessage(Message.obtain(
 				uiHandler, 1, ikse.getMessage()));
 			}catch (IOException ioe){
+				Log.e(TAG, "error'd", ioe);
 				uiHandler.sendMessage(Message.obtain(
 				uiHandler, 1, ioe.getMessage()));
 			}finally{
@@ -380,9 +384,11 @@ public class SkullTalkService{
 				/*
 				 * Make sure socket is cleaned up.
 				 */
-				if (callSocket.isConnected()){
-					try{ callSocket.close(); }
-					catch (IOException ioe2){}
+				if (callSocket != null){
+					if (callSocket.isConnected()){
+						try{ callSocket.close(); }
+						catch (IOException ioe2){}
+					}
 				}
 				callSocket = null;
 				callThread = null;
@@ -484,9 +490,11 @@ public class SkullTalkService{
 					continue;
 					
 				}catch (InvalidKeySpecException ikse){
+					Log.e(TAG, "error'd", ikse);
 					uiHandler.sendMessage(Message.obtain(
 					uiHandler, 1, ikse.getMessage()));
 				}catch (IOException ioe){
+					Log.e(TAG, "error'd", ioe);
 					uiHandler.sendMessage(Message.obtain(
 					uiHandler, 1, ioe.getMessage()));
 				}finally{
@@ -494,9 +502,11 @@ public class SkullTalkService{
 					/*
 					 * Make sure socket is cleaned up.
 					 */
-					if (! callSocket.isClosed()){
-						try{ callSocket.close(); }
-						catch (IOException ioe2){}
+					if (callSocket != null){
+						if (! callSocket.isClosed()){
+							try{ callSocket.close(); }
+							catch (IOException ioe2){}
+						}
 					}
 					callSocket = null;
 					acceptThread = null;
@@ -607,6 +617,7 @@ public class SkullTalkService{
 				}
 				
 			}catch (IOException ioe){
+				Log.e(TAG, "error'd", ioe);
 				uiHandler.sendMessage(Message.obtain(
 				uiHandler, 1, ioe.getMessage()));
 				hangup();
@@ -626,10 +637,12 @@ public class SkullTalkService{
 					if (aout.getPlayState() ==
 					AudioTrack.PLAYSTATE_PLAYING)
 						aout.stop();
-				if (! callSocket.isClosed()){
-					try{ callSocket.close(); }
-					catch (IOException ioe2){}
-					callSocket = null;
+				if (callSocket != null){
+					if (! callSocket.isClosed()){
+						try{ callSocket.close(); }
+						catch (IOException ioe2){}
+						callSocket = null;
+					}
 				}
 				talkThread = null;
 				

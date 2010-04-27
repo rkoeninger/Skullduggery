@@ -11,7 +11,7 @@ public class Skullduggery extends Activity {
 	
 	private final Handler handlerCallback = new Handler(){
 		public void handleMessage(Message msg){
-			TextView textOutput = (TextView) findViewById(R.id.phoneNumField);
+			TextView textOutput = (TextView) findViewById(R.id.textView1);
 	        Button callButton = (Button) findViewById(R.id.callButton);
 	        Button hangupButton = (Button) findViewById(R.id.hangupButton);
 			switch (msg.what){
@@ -31,7 +31,7 @@ public class Skullduggery extends Activity {
 				hangupButton.setEnabled(false);
 				textOutput.append("call in progress\n");
 			default:
-				throw new Error("SkullduggeryApp - bad handler message code");
+				// Do nothing
 			}
 		}
 	};
@@ -55,6 +55,9 @@ public class Skullduggery extends Activity {
         setContentView(R.layout.main);
         Button callButton = (Button) findViewById(R.id.callButton);
         Button hangupButton = (Button) findViewById(R.id.hangupButton);
+        int width = getWindowManager().getDefaultDisplay().getWidth();
+        callButton.setWidth(width / 2);
+        hangupButton.setWidth(width / 2);
         callButton.setOnClickListener(callButtonListener);
         hangupButton.setOnClickListener(hangupButtonListener);
         callButton.setEnabled(true);
