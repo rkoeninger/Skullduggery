@@ -1,7 +1,4 @@
 package edu.uc.skullduggery;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 

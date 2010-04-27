@@ -4,7 +4,6 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 
 import java.io.Serializable;
-import java.math.BigInteger;
 
 import javax.crypto.KeyGenerator;
 import javax.crypto.Mac;
@@ -66,7 +65,7 @@ public class SkullUserInfo implements Serializable {
 	/*
 	 * This will match the given raw public key with the hashed value stored by this user.
 	 */
-	public boolean matchStoredPubKey(BigInteger pubKeyExp) throws InvalidKeyException
+	public boolean matchStoredPubKey(byte[] pubKey) throws InvalidKeyException
 	{
 		Mac mac;
 		try{
@@ -75,12 +74,12 @@ public class SkullUserInfo implements Serializable {
 			throw new Error(nsae);
 		}
 		mac.init(_salt);
-		byte[] pkHash = mac.doFinal(pubKeyExp.toByteArray());
+		byte[] pkHash = mac.doFinal(pubKey);
 		
 		return java.util.Arrays.equals(pkHash, _pubKeyHash);
 	}
 	
-	public void storePubKey(BigInteger pubKeyExp) throws InvalidKeyException
+	public void storePubKey(byte[] pubKey) throws InvalidKeyException
 	{
 		Mac mac;
 		try{
@@ -89,6 +88,6 @@ public class SkullUserInfo implements Serializable {
 			throw new Error(nsae);
 		}
 		mac.init(_salt);
-		_pubKeyHash = mac.doFinal(pubKeyExp.toByteArray());
+		_pubKeyHash = mac.doFinal(pubKey);
 	}
 }

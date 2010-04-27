@@ -9,6 +9,8 @@ import java.security.interfaces.*;
 import java.security.spec.*;
 import java.util.*;
 import javax.crypto.*;
+import javax.crypto.spec.SecretKeySpec;
+
 import android.content.*;
 import android.media.*;
 import android.os.*;
@@ -76,14 +78,15 @@ public class SkullTalkService{
 	private ContextWrapper appContext;
 	private SkullKeyManager keyManager;
 	
-	private SkullMessageFactory messageFact;
+//	private SkullMessageFactory messageFact;
 	private SkullUserInfoManager userManager;
 	private final String phoneNumber;
 	
 	private Socket callSocket;
 	private KeyPair localKeys;
 	private PublicKey remotePublicKey;
-	private Mac mac;
+//	private Mac mac;
+	private SecretKey sessionKey;
 	
 	/**
 	 * Information about the remote phone current talking with.
@@ -228,10 +231,12 @@ public class SkullTalkService{
 	
 	/**
 	 * Key generation and exchange occurs here.
+	 * @throws InvalidKeySpecException 
+	 * @throws IOException 
 	 */
-	private void performHandshake(DataInputStream dis, DataOutputStream dos)
-	throws IOException, InvalidKeySpecException {
-
+	private void performHandshake(DataInputStream dis, DataOutputStream dos) throws InvalidKeySpecException, IOException
+	//throws IOException, InvalidKeySpecException, NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException {
+	{
 		/*
 		 * Generate local phone's keys for this conversation.
 		 */
@@ -255,6 +260,7 @@ public class SkullTalkService{
 		dos.write((byte) MessageType.PUBMOD.ordinal());
 		dos.writeInt(localPubMod.toByteArray().length);
 		dos.write(localPubMod.toByteArray());
+		
 		dos.write(Constants.MAGICBYTES);
 		dos.write((byte) MessageType.PUBEXP.ordinal());
 		dos.writeInt(localPubExp.toByteArray().length);
@@ -275,6 +281,7 @@ public class SkullTalkService{
 		BigInteger remotePubMod = new BigInteger(remotePubModBytes);
 		BigInteger remotePubExp = new BigInteger(remotePubExpBytes);
 		
+		
 		/*
 		 * Generate a public key for the remote phone from the
 		 * MOD and EXP parts received.
@@ -282,15 +289,41 @@ public class SkullTalkService{
 		RSAPublicKeySpec remotePubKeySpec =
 		new RSAPublicKeySpec(remotePubMod, remotePubExp);
 		remotePublicKey = keygen.generatePublic(remotePubKeySpec);
-		
-		// TODO: figure this out:
-		//       Generate a session key
-		//       Generate a MAC key
-		//       Send session, MAC key through encrypted thinger.
-		
 	}
 	
 	public class CallThread extends Thread{
+		private void doHandshake(DataInputStream dis, DataOutputStream dos) throws InvalidKeySpecException, IOException, NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException
+		{
+			performHandshake(dis, dos);
+		
+			/*
+			 * Create encrypt (outgoing) cipher from remote public key.
+			 * Create decrypt (incoming) cipher from local private key.
+			 */
+			Cipher encryptor =
+			Cipher.getInstance(remotePublicKey.getAlgorithm());
+			encryptor.init(Cipher.ENCRYPT_MODE, remotePublicKey);
+			Cipher decryptor =
+			Cipher.getInstance(localKeys.getPrivate().getAlgorithm());
+			decryptor.init(Cipher.DECRYPT_MODE, localKeys.getPrivate());
+			
+			DataInputStream in = new DataInputStream(new CipherInputStream(
+					callSocket.getInputStream(), encryptor));
+			
+			//Read an AES key from the stream
+			readMagic(in);
+			readType(in, MessageType.SESKEY);
+			int keyLen = in.readInt();
+			byte[] encSesKey;
+			if(keyLen > 0)
+				encSesKey = new byte[keyLen];
+			else
+				encSesKey = new byte[Constants.SYMKEYSIZE];
+			sessionKey = new SecretKeySpec(encSesKey, Constants.SYMMALGORITHM);
+			
+		}
+		
+		
 		private String remotePhoneNumber;
 		public CallThread(String number){ remotePhoneNumber = number; }
 		public void run(){
@@ -362,7 +395,7 @@ public class SkullTalkService{
 				 * calling (CallThread) and receiving (AcceptThread)
 				 * phones.
 				 */
-				performHandshake(dis, dos);
+				doHandshake(dis, dos);
 				
 				/*
 				 * At this point, we have exchanged keys and are ready
@@ -379,6 +412,15 @@ public class SkullTalkService{
 				Log.e(TAG, "error'd", ioe);
 				uiHandler.sendMessage(Message.obtain(
 				uiHandler, 1, ioe.getMessage()));
+			} catch (InvalidKeyException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (NoSuchAlgorithmException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (NoSuchPaddingException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
 			}finally{
 
 				/*
@@ -398,8 +440,42 @@ public class SkullTalkService{
 	}
 	
 	public class AcceptThread extends Thread{
+		
+		
 		private int listenPort;
+		
 		public AcceptThread(int port){ listenPort = port; }
+		private void doHandshake(DataInputStream dis, DataOutputStream dos) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, IOException
+		{
+			/*
+			 * Create encrypt (outgoing) cipher from remote public key.
+			 * Create decrypt (incoming) cipher from local private key.
+			 */
+			Cipher encryptor =
+			Cipher.getInstance(remotePublicKey.getAlgorithm());
+			encryptor.init(Cipher.ENCRYPT_MODE, remotePublicKey);
+			Cipher decryptor =
+			Cipher.getInstance(localKeys.getPrivate().getAlgorithm());
+			decryptor.init(Cipher.DECRYPT_MODE, localKeys.getPrivate());
+			
+			DataOutputStream out = new DataOutputStream(new CipherOutputStream(
+					callSocket.getOutputStream(), decryptor));
+
+			//TODO Generate an AES key
+			KeyGenerator kgen = KeyGenerator.getInstance(Constants.SYMMALGORITHM);
+			kgen.init(Constants.SYMKEYSIZE);
+			SecretKey sesKeyTemp = kgen.generateKey();
+			
+			sessionKey = new SecretKeySpec(sesKeyTemp.getEncoded(), sesKeyTemp.getAlgorithm());
+			
+			//TODO Send the AES key
+			out.write(Constants.MAGICBYTES);
+			out.writeInt(SkullMessage.MessageType.SESKEY.ordinal());
+			out.writeInt(sessionKey.getEncoded().length);
+			out.write(sessionKey.getEncoded());
+			out.flush();
+		}
+		
 		public void run(){
 			
 			/*
@@ -468,7 +544,7 @@ public class SkullTalkService{
 					 * calling (CallThread) and receiving (AcceptThread)
 					 * phones.
 					 */
-					performHandshake(dis, dos);
+					doHandshake(dis, dos);
 					
 					/*
 					 * At this point, we have exchanged keys and are ready
@@ -488,15 +564,20 @@ public class SkullTalkService{
 						return;
 					}
 					continue;
-					
-				}catch (InvalidKeySpecException ikse){
-					Log.e(TAG, "error'd", ikse);
-					uiHandler.sendMessage(Message.obtain(
-					uiHandler, 1, ikse.getMessage()));
 				}catch (IOException ioe){
 					Log.e(TAG, "error'd", ioe);
 					uiHandler.sendMessage(Message.obtain(
 					uiHandler, 1, ioe.getMessage()));
+				} catch (InvalidKeyException ike) {
+					uiHandler.sendMessage(Message.obtain(
+					uiHandler, 1, ike.getMessage()));
+				} catch (NoSuchAlgorithmException nsae) {
+					uiHandler.sendMessage(Message.obtain(
+					uiHandler, 1, nsae.getMessage()));
+				} catch (NoSuchPaddingException nspe) {
+					uiHandler.sendMessage(Message.obtain(
+					uiHandler, 1, nspe.getMessage()));
+
 				}finally{
 					
 					/*
@@ -525,17 +606,30 @@ public class SkullTalkService{
 			AudioRecord ain = null;
 			
 			try{
-
+				
+				/*
+				 * Check if the remote public key matches the stored hash
+				 */
+				
+				SkullUserInfo remoteUser = userManager.getInstance(remotePhoneNumber);
+				if(!remoteUser.matchStoredPubKey(remotePublicKey.getEncoded()))
+				{
+					//TODO notify the user through a handler.
+					//TODO Store the key if they want to continue or whatever.
+					//TODO This may be a different call altogether.
+					//TODO Don't bother disconnecting automagically; they can always hang up
+				}
+				
 				/*
 				 * Create encrypt (outgoing) cipher from remote public key.
 				 * Create decrypt (incoming) cipher from local private key.
 				 */
 				Cipher encryptor =
-				Cipher.getInstance(remotePublicKey.getAlgorithm());
-				encryptor.init(Cipher.ENCRYPT_MODE, remotePublicKey);
+				Cipher.getInstance(sessionKey.getAlgorithm());
+				encryptor.init(Cipher.ENCRYPT_MODE, sessionKey);
 				Cipher decryptor =
-				Cipher.getInstance(localKeys.getPrivate().getAlgorithm());
-				decryptor.init(Cipher.DECRYPT_MODE, localKeys.getPrivate());
+				Cipher.getInstance(sessionKey.getAlgorithm());
+				decryptor.init(Cipher.DECRYPT_MODE, sessionKey);
 				
 				/*
 				 * Open streams and prepare audio tracks.
@@ -645,7 +739,6 @@ public class SkullTalkService{
 					}
 				}
 				talkThread = null;
-				
 			}
 		}
 	}

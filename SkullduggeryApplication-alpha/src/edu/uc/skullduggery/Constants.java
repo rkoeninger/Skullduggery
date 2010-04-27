@@ -2,7 +2,6 @@ package edu.uc.skullduggery;
 
 import java.io.IOException;
 import java.net.InetAddress;
-import java.util.StringTokenizer;
 
 public class Constants {
 	public static final String USERDBNAME = "SkullStorage";
