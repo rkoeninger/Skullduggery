@@ -11,6 +11,7 @@ public class SkullMessage {
 		ACCEPT,
 		REJECT,
 		BUSY,
+		VOICE,
 		HANGUP;
 	}
 	

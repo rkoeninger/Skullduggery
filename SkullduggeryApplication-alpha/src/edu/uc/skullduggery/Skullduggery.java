@@ -1,24 +1,37 @@
 package edu.uc.skullduggery;
 
 import android.app.Activity;
-import android.os.Bundle;
-import android.os.Handler;
-import android.os.Message;
-import android.widget.TextView;
-import android.view.View;
+import android.os.*;
+import android.widget.*;
+import android.view.*;
 
 public class Skullduggery extends Activity {
 	
 	private SkullTalkService service;
+	
 	private final Handler handlerCallback = new Handler(){
 		public void handleMessage(Message msg){
+			TextView textOutput = (TextView) findViewById(R.id.phoneNumField);
+	        Button callButton = (Button) findViewById(R.id.callButton);
+	        Button hangupButton = (Button) findViewById(R.id.hangupButton);
 			switch (msg.what){
-			case 1:
-				//show talk screen
-			case 2:
-				//show dial screen
+			case 1: // Display message to user
+				textOutput.append((String) msg.obj);
+				textOutput.append("\n");
+			case 2: // Call has ended
+		        callButton.setEnabled(true);
+		        hangupButton.setEnabled(false);
+				textOutput.append("call ended\n");
+			case 3: // Call has started
+		        callButton.setEnabled(false);
+		        hangupButton.setEnabled(true);
+				textOutput.append("call placed\n");
+			case 4: // Call is in progress
+				callButton.setEnabled(false);
+				hangupButton.setEnabled(false);
+				textOutput.append("call in progress\n");
 			default:
-				//error
+				throw new Error("SkullduggeryApp - bad handler message code");
 			}
 		}
 	};
@@ -28,69 +41,31 @@ public class Skullduggery extends Activity {
         	String phoneNum =
         	((TextView) findViewById(R.id.phoneNumField)).getText().toString();
         	service.dial(phoneNum);
-        	// After service hangs-up, handler
-        	// is called and UI is updated there
         }
     };
     
     View.OnClickListener hangupButtonListener = new View.OnClickListener(){
         public void onClick(View view){
         	service.hangup();
-        	// After service hangs-up, handler
-        	// is called and UI is updated there
         }
     };
 	
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
-        
-        findViewById(R.id.callButton).setOnClickListener(callButtonListener);
-        findViewById(R.id.hangupButton).setOnClickListener(hangupButtonListener);
-        
+        Button callButton = (Button) findViewById(R.id.callButton);
+        Button hangupButton = (Button) findViewById(R.id.hangupButton);
+        callButton.setOnClickListener(callButtonListener);
+        hangupButton.setOnClickListener(hangupButtonListener);
+        callButton.setEnabled(true);
+        hangupButton.setEnabled(false);
         service = new SkullTalkService(handlerCallback, this);
-        
+        service.start();
     }
     
     public void onDestroy(){
-    	
-    	//stop call
-    	
+    	service.stop();
     	super.onDestroy();
-    	
-    }
-
-    public void onStart(){
-    	super.onStart();
-    	
-    }
-    
-    public void onStop(){
-    	
-    	//possibly stop call
-    	
-    	super.onStop();
-    	
-    }
-    
-    public void onResume(){
-    	super.onResume();
-    	
-    }
-    
-    public void onPause(){
-    	super.onPause();
-    	
-    }
-    
-    public void onSaveInstanceState(Bundle outState){
-    	super.onSaveInstanceState(outState);
-    	
-    }
-    
-    public void onRestoreInstanceState(Bundle savedInstanceState){
-    	super.onRestoreInstanceState(savedInstanceState);
-    	
     }
     
 }
