@@ -362,11 +362,12 @@ public class SkullTalkService{
 				 * Open input and output streams.
 				 * If could not connect, report error to UI and cleanup + quit.
 				 */
-				callSocket = new Socket();
 				for (int x = 0; x < 300; ++x){
 					try{
+						callSocket = new Socket();
 						callSocket.connect(remotePhoneAddress, 100);
 					}catch (SocketTimeoutException ste){
+						callSocket.close();
 						continue;
 					}catch (Exception e){
 						throw new Error(e);
