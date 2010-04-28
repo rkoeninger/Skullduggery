@@ -72,8 +72,7 @@ public class SwitchStationClient {
 		/*
 		 * Get an SSL socket. Could throw an exception; report error if so.
 		 */
-		Socket connection;
-		connection = SSLSocketFactory.getDefault().createSocket();
+		Socket connection = null;
 		
 		/*
 		 * Make 300 attempts to connect, each lasting no longer than 100ms.
@@ -83,13 +82,15 @@ public class SwitchStationClient {
 		 */
 		for (int i = 0; i < 300; ++i){
 			try{
+				connection = SSLSocketFactory.getDefault().createSocket();
 				connection.connect(this.serverAddress, 100);
 			}catch (SocketTimeoutException ste){
+				connection.close();
 				continue;
 			}
 		}
 		if (! connection.isConnected()){
-			throw new IOException("Able to contact server");
+			throw new IOException("Unable to contact server");
 		}
 		
 		/*

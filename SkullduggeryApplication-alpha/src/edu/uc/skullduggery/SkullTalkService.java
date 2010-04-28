@@ -109,6 +109,11 @@ public class SkullTalkService{
 		Context.TELEPHONY_SERVICE)).getLine1Number();
 		serverComm = new SwitchStationClient();
 	}
+
+	/* *********************************************************************
+	 * Functions are synchronized so there won't be concurrent changes
+	 * to the state of the service from the UI/TransmitThread/ReceiveThread
+	 ***********************************************************************/
 	
 	public synchronized CallState getCallState(){
 		return callState;
@@ -118,10 +123,9 @@ public class SkullTalkService{
 		callState = state;
 	}
 	
-	/* *********************************************************************
-	 * Functions are synchronized so there won't be concurrent changes
-	 * to the state of the service from the UI/TransmitThread/ReceiveThread
-	 ***********************************************************************/
+	public String getPhoneNumber(){
+		return remotePhoneNumber;
+	}
 	
 	public void start(){
 		//TODO: Read public key from file
@@ -149,10 +153,13 @@ public class SkullTalkService{
 	}
 	
 	public synchronized void hangup(){
-		if (callState == CallState.TALKING){
+		if ((callState == CallState.TALKING) ||
+		(callState == CallState.CALLING)){
 			callState = CallState.LISTENING;
 			uiHandler.sendEmptyMessage(2);
 			talkThread = null;
+			callThread = null;
+			remotePhoneNumber = null;
 		}
 	}
 	
@@ -234,9 +241,10 @@ public class SkullTalkService{
 	 * @throws InvalidKeySpecException 
 	 * @throws IOException 
 	 */
-	private void performHandshake(DataInputStream dis, DataOutputStream dos) throws InvalidKeySpecException, IOException
-	//throws IOException, InvalidKeySpecException, NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException {
+	private void performHandshake(DataInputStream dis, DataOutputStream dos)
+	throws InvalidKeySpecException, IOException
 	{
+		
 		/*
 		 * Generate local phone's keys for this conversation.
 		 */
@@ -289,11 +297,18 @@ public class SkullTalkService{
 		RSAPublicKeySpec remotePubKeySpec =
 		new RSAPublicKeySpec(remotePubMod, remotePubExp);
 		remotePublicKey = keygen.generatePublic(remotePubKeySpec);
+		
 	}
 	
 	public class CallThread extends Thread{
-		private void doHandshake(DataInputStream dis, DataOutputStream dos) throws InvalidKeySpecException, IOException, NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException
+		private String remotePhoneNumber;
+		public CallThread(String number){ remotePhoneNumber = number; }
+		
+		private void doHandshake(DataInputStream dis, DataOutputStream dos)
+		throws InvalidKeySpecException, IOException,
+		NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException
 		{
+			
 			performHandshake(dis, dos);
 		
 			/*
@@ -323,9 +338,6 @@ public class SkullTalkService{
 			
 		}
 		
-		
-		private String remotePhoneNumber;
-		public CallThread(String number){ remotePhoneNumber = number; }
 		public void run(){
 			try{
 				
@@ -408,10 +420,12 @@ public class SkullTalkService{
 				Log.e(TAG, "error'd", ikse);
 				uiHandler.sendMessage(Message.obtain(
 				uiHandler, 1, ikse.getMessage()));
+				hangup();
 			}catch (IOException ioe){
 				Log.e(TAG, "error'd", ioe);
 				uiHandler.sendMessage(Message.obtain(
 				uiHandler, 1, ioe.getMessage()));
+				hangup();
 			} catch (InvalidKeyException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
@@ -434,19 +448,22 @@ public class SkullTalkService{
 				}
 				callSocket = null;
 				callThread = null;
-				
+
 			}
 		}
 	}
 	
 	public class AcceptThread extends Thread{
-		
-		
 		private int listenPort;
-		
 		public AcceptThread(int port){ listenPort = port; }
-		private void doHandshake(DataInputStream dis, DataOutputStream dos) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, IOException
+		
+		private void doHandshake(DataInputStream dis, DataOutputStream dos)
+		throws NoSuchAlgorithmException, NoSuchPaddingException,
+		InvalidKeySpecException, InvalidKeyException, IOException
 		{
+
+			performHandshake(dis, dos);
+		
 			/*
 			 * Create encrypt (outgoing) cipher from remote public key.
 			 * Create decrypt (incoming) cipher from local private key.
@@ -462,11 +479,13 @@ public class SkullTalkService{
 					callSocket.getOutputStream(), decryptor));
 
 			//TODO Generate an AES key
-			KeyGenerator kgen = KeyGenerator.getInstance(Constants.SYMMALGORITHM);
+			KeyGenerator kgen = KeyGenerator.getInstance(
+			Constants.SYMMALGORITHM);
 			kgen.init(Constants.SYMKEYSIZE);
 			SecretKey sesKeyTemp = kgen.generateKey();
 			
-			sessionKey = new SecretKeySpec(sesKeyTemp.getEncoded(), sesKeyTemp.getAlgorithm());
+			sessionKey = new SecretKeySpec(
+			sesKeyTemp.getEncoded(), sesKeyTemp.getAlgorithm());
 			
 			//TODO Send the AES key
 			out.write(Constants.MAGICBYTES);
@@ -474,6 +493,7 @@ public class SkullTalkService{
 			out.writeInt(sessionKey.getEncoded().length);
 			out.write(sessionKey.getEncoded());
 			out.flush();
+			
 		}
 		
 		public void run(){
@@ -564,20 +584,24 @@ public class SkullTalkService{
 						return;
 					}
 					continue;
+
 				}catch (IOException ioe){
 					Log.e(TAG, "error'd", ioe);
 					uiHandler.sendMessage(Message.obtain(
 					uiHandler, 1, ioe.getMessage()));
+					hangup();
 				} catch (InvalidKeyException ike) {
 					uiHandler.sendMessage(Message.obtain(
 					uiHandler, 1, ike.getMessage()));
+				} catch (InvalidKeySpecException ikse) {
+					uiHandler.sendMessage(Message.obtain(
+					uiHandler, 1, ikse.getMessage()));
 				} catch (NoSuchAlgorithmException nsae) {
 					uiHandler.sendMessage(Message.obtain(
 					uiHandler, 1, nsae.getMessage()));
 				} catch (NoSuchPaddingException nspe) {
 					uiHandler.sendMessage(Message.obtain(
 					uiHandler, 1, nspe.getMessage()));
-
 				}finally{
 					
 					/*
@@ -593,7 +617,21 @@ public class SkullTalkService{
 					acceptThread = null;
 					
 				}
+				
 			}
+			
+			/*
+			 * Make sure socket is cleaned up.
+			 */
+			if (callSocket != null){
+				if (! callSocket.isClosed()){
+					try{ callSocket.close(); }
+					catch (IOException ioe2){}
+				}
+			}
+			callSocket = null;
+			acceptThread = null;
+
 		}
 	}
 	
@@ -617,7 +655,8 @@ public class SkullTalkService{
 					//TODO notify the user through a handler.
 					//TODO Store the key if they want to continue or whatever.
 					//TODO This may be a different call altogether.
-					//TODO Don't bother disconnecting automagically; they can always hang up
+					//TODO Don't bother disconnecting automagically;
+					//they can always hang up
 				}
 				
 				/*
@@ -739,6 +778,7 @@ public class SkullTalkService{
 					}
 				}
 				talkThread = null;
+				
 			}
 		}
 	}

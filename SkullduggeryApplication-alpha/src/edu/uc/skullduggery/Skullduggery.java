@@ -18,18 +18,22 @@ public class Skullduggery extends Activity {
 			case 1: // Display message to user
 				textOutput.append((String) msg.obj);
 				textOutput.append("\n");
+				break;
 			case 2: // Call has ended
 		        callButton.setEnabled(true);
 		        hangupButton.setEnabled(false);
 				textOutput.append("call ended\n");
-			case 3: // Call has started
+				break;
+			case 3: // Conversation has started
 		        callButton.setEnabled(false);
 		        hangupButton.setEnabled(true);
-				textOutput.append("call placed\n");
-			case 4: // Call is in progress
+				textOutput.append("start talking!!!\n");
+				break;
+			case 4: // Dial is in progress
 				callButton.setEnabled(false);
 				hangupButton.setEnabled(false);
-				textOutput.append("call in progress\n");
+				textOutput.append("dialing in progress\n");
+				break;
 			default:
 				// Do nothing
 			}
