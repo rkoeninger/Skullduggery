@@ -83,7 +83,7 @@ public class SwitchStationClient {
 		for (int i = 0; i < 300; ++i){
 			try{
 				connection = (SSLSocket) SSLSocketFactory.getDefault().createSocket();
-				((SSLSocket) connection).setEnabledCipherSuites(Constants.SSLCIPHERSUITES);
+//				((SSLSocket) connection).setEnabledCipherSuites(Constants.SSLCIPHERSUITES);
 				connection.connect(this.serverAddress, 100);
 				break;
 			}catch (SocketTimeoutException ste){

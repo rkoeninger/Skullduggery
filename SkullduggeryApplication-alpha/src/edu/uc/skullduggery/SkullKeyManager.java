@@ -43,11 +43,11 @@ public class SkullKeyManager {
 		String groupBy = null;
 		String having = null;
 		String orderBy = "KeyID DESC";
-		String limit = "LIMIT 1";
+		String limit = "1"; 
 		PublicKey pubKey;
 		PrivateKey privKey;
 		KeyPair kp;
-		
+		 
 		Cursor keyCursor = _sqldb.query(SkullKeys, columns, selection, selectionArgs, groupBy, having, orderBy, limit);
 		if(keyCursor.moveToNext())
 		{
