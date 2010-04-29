@@ -99,14 +99,20 @@ public class SkullTalkService{
 	 * Contact info and interface for the proxy (switch station) server.
 	 */
 	private SwitchStationClient serverComm;
-	private String serverIP = "10.0.2.2";
-	private int serverPort = 9002;
+	private final String serverIP;// = "10.0.2.2";
+	private final static int serverPort = 9002;
+	private final static int listenPort = 9003;
 	
 	public SkullTalkService(Handler uiHandler, ContextWrapper context){
 		this.uiHandler = uiHandler;
 		this.appContext = context;
 		phoneNumber = ((TelephonyManager) context.getSystemService(
 		Context.TELEPHONY_SERVICE)).getLine1Number();
+		//
+		//Setup for droid - Use server IP if it's my phone.
+		//TODO: Convert this into a host name or user-configured value.
+		serverIP = (phoneNumber == "16147380764")? "192.168.200.11" : "10.0.2.2";
+		
 		serverComm = new SwitchStationClient();
 	}
 
@@ -127,17 +133,22 @@ public class SkullTalkService{
 		return remotePhoneNumber;
 	}
 	
-	public void start(){
+	public void start(){   
 		//TODO: Read public key from file
 		keyManager = new SkullKeyManager(appContext);
 		userManager = new SkullUserInfoManager(appContext);
 		serverComm.connect(serverIP, serverPort);
 		
 		// TODO: How to find our own contact info?
-//		serverComm.register(phoneNumber, new byte[]{1,1,1,1}, 9001);
+		try {
+			serverComm.register(phoneNumber, listenPort);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 
 		callState = CallState.LISTENING;
-		acceptThread = new AcceptThread(9002);
+		acceptThread = new AcceptThread(listenPort);
 		acceptThread.start();
 	}
 	
@@ -347,13 +358,9 @@ public class SkullTalkService{
 				 */
 				Object[] retvals = new Object[2];
 				serverComm.request(remotePhoneNumber, retvals);
-				int ip32 = ((Integer) retvals[0]).intValue();
-				String ipString =
-				Constants.ipBytesToString(
-				Constants.ipIntToBytes(ip32));
+				InetAddress IP = (InetAddress) retvals[0];
 				int port32 = ((Short) retvals[1]).shortValue();
-				InetSocketAddress remotePhoneAddress =
-				InetSocketAddress.createUnresolved(ipString, port32);
+				InetSocketAddress remotePhoneAddress = new InetSocketAddress(IP, port32);
 				
 				/* 
 				 * Open connection to remote phone.

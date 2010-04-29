@@ -17,7 +17,7 @@ public class SwitchStationClient {
 	
 	private SocketAddress serverAddress;
 	
-	public SwitchStationClient(){
+	public SwitchStationClient(){ 
 	}
 
 	public long getSessionKey() {
@@ -84,6 +84,7 @@ public class SwitchStationClient {
 			try{
 				connection = SSLSocketFactory.getDefault().createSocket();
 				connection.connect(this.serverAddress, 100);
+				break;
 			}catch (SocketTimeoutException ste){
 				connection.close();
 				continue;
@@ -118,13 +119,12 @@ public class SwitchStationClient {
 	 * by Skullduggery.
 	 * 
 	 * @param phoneNum
-	 * @param ipBytes
 	 * @param port32
 	 * @return status
-	 */
-	public void register(final String phoneNum, byte[] ipBytes, int port32)
+	 */ 
+	public void register(final String phoneNum, int port32)
 	throws IOException{
-		final int ip = Constants.ipBytesToInt(ipBytes);
+//		final int ip = Constants.ipBytesToInt(ipBytes);
 		final short port = (short) port32;
 		
 		final Object[] retvals = new Object[1];
@@ -136,11 +136,13 @@ public class SwitchStationClient {
 				DataOutputStream out = new DataOutputStream(
 				connection.getOutputStream());
 				
+//				out.write(Constants.MAGICBYTES);
 				out.writeByte(1); // Flag for register packet
 				out.writeByte(phoneNum.length());
 				out.write(phoneNum.getBytes());
-				out.write(ip);
+//				out.write(ip);
 				out.writeShort(port);
+				out.flush();
 				
 				byte status = in.readByte();
 				if (status != 0){
@@ -178,16 +180,20 @@ public class SwitchStationClient {
 				DataOutputStream out = new DataOutputStream(
 				connection.getOutputStream());
 				
+//				out.write(Constants.MAGICBYTES);
 				out.writeByte(2);
 				out.writeByte(phoneNum.length());
 				out.write(phoneNum.getBytes());
+				out.flush();
 				
 				byte status = in.readByte();
 				if (status != 0){
 					throw new IOException("Request failed");
 				}
 				
-				retvals[0] = new Integer(in.readInt());
+				byte[] ipBytes = new byte[4];
+				in.readFully(ipBytes);
+				retvals[0] = InetAddress.getByAddress(ipBytes);
 				retvals[1] = new Short(in.readShort());
 			}
 		});
@@ -209,9 +215,11 @@ public class SwitchStationClient {
 				connection.getInputStream());
 				DataOutputStream out = new DataOutputStream(
 				connection.getOutputStream());
-				
+
+//				out.write(Constants.MAGICBYTES);
 				out.writeByte(3);
 				out.writeLong(sessionKey);
+				out.flush();
 				
 				byte status = in.readByte();
 				if (status != 0){
@@ -233,9 +241,8 @@ public class SwitchStationClient {
 	 * @param port32
 	 * @return
 	 */
-	public void update(final String phoneNum, byte[] ipBytes, int port32)
+	public void update(final String phoneNum, int port32)
 	throws IOException{
-		final int ip = Constants.ipBytesToInt(ipBytes);
 		final short port = (short) port32;
 		
 		makeRequest(new Processor(){
@@ -244,13 +251,14 @@ public class SwitchStationClient {
 				connection.getInputStream());
 				DataOutputStream out = new DataOutputStream(
 				connection.getOutputStream());
-				
+
+//				out.write(Constants.MAGICBYTES);
 				out.writeByte(4);
 				out.writeLong(sessionKey);
 				out.writeByte(phoneNum.length());
 				out.write(phoneNum.getBytes());
-				out.writeInt(ip);
 				out.writeShort(port);
+				out.flush();
 				
 				byte status = in.readByte();
 				if (status != 0){

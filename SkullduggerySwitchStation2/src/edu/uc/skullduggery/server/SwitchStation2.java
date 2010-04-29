@@ -53,25 +53,18 @@ public class SwitchStation2 {
 	 * java SwitchStation listenPort
 	 */
 	public static void main(String[] args) {
+		if(args.length == 0) {
+			System.out.println("Usage: SwitchStation2 PORTNUM");
+			System.exit(0);
+		}
+		
 		int listenPort = Integer.parseInt(args[0]);
 		SwitchStation2 server = new SwitchStation2(listenPort);
 		server.start();
 	}
 
-	/**
-	 * Simple struct to contain info about how to contact a phone.
-	 */
-	public static class PhoneInfo{
-		public int ip;
-		public int port;
-		public PhoneInfo(int ip, int port){
-			this.ip = ip;
-			this.port = port;	
-		}	
-	}
-	
 	private int listenPort;
-	private Hashtable<String, PhoneInfo> phoneTable;
+	private Hashtable<String, InetSocketAddress> phoneTable;
 	
 	/**
 	 * Creates an instance of the switch station server listening on
@@ -79,7 +72,7 @@ public class SwitchStation2 {
 	 */
 	public SwitchStation2(int port){
 		listenPort = port;
-		phoneTable = new Hashtable<String, PhoneInfo>();
+		phoneTable = new Hashtable<String, InetSocketAddress>();
 	}
 	
 	/**
@@ -96,152 +89,149 @@ public class SwitchStation2 {
 	 * immediately after its predecessor has received a request).
 	 */
 	public class ListenThread extends Thread{
+		ServerSocket serverSocket;
+		public ListenThread()
+		{
+			try {
+				serverSocket= new ServerSocket(listenPort);
+			} catch (IOException ioe) {
+				// TODO Auto-generated catch block
+				ioe.printStackTrace();
+			}
+		}
+		
+		private void register(DataInputStream input, DataOutputStream output, InetAddress client) throws IOException
+		{
+			// Read phone number from socket
+			int phoneNumLength = input.readByte();
+			
+			byte[] phoneNumBytes = new byte[phoneNumLength];
+			
+			input.readFully(phoneNumBytes);
+			
+			String phoneNum = new String(phoneNumBytes);
+			
+			byte portByte1 = input.readByte();
+			byte portByte2 = input.readByte();
+			
+			int port = ((portByte1 << 8) & 0xff00) |
+			(portByte2 & 0xff);
+			
+			// Add value to table
+			phoneTable.put(phoneNum, new InetSocketAddress(client, port));
+			
+			// Indicate success
+			output.writeByte(1);
+			
+			// Logging
+			System.out.print("+ Phone info added ");
+			System.out.print(phoneNum);
+			System.out.print(" ");
+			System.out.print(client.toString());
+			System.out.print(":");
+			System.out.print(port);
+			System.out.println();
+		}
+		
+		private void infoRequest(DataInputStream input, DataOutputStream output) throws IOException
+		{
+			System.out.println("Phone info request");
+			// Read phone number from socket
+			int phoneNumLength = input.readByte();
+			
+			byte[] phoneNumBytes = new byte[phoneNumLength];
+			
+			input.readFully(phoneNumBytes);
+			
+			String phoneNum = new String(phoneNumBytes);
+			
+			// Get phone info from table
+			InetSocketAddress info = phoneTable.get(
+			new String(phoneNumBytes));
+			
+			if (info == null){
+				
+				// Indicate success
+				output.writeByte(0);
+				
+				// Logging
+				System.out.print("! Request FAIL ");
+				System.out.print(phoneNum);
+				System.out.println();
+			} else {
+			
+				// Indicate success
+				output.writeByte(1);
+				
+				InetAddress ip = info.getAddress();
+				int port = info.getPort();
+				
+				byte portByte1 = (byte) (port >> 8);
+				byte portByte2 = (byte) (port);
+				
+				// Write ip and port to socket
+				output.write(ip.getAddress());
+				output.writeByte(portByte1);
+				output.writeByte(portByte2);
+			
+				// Logging
+				System.out.print("? Phone info requested ");
+				System.out.print(phoneNum);
+				System.out.print(" ");
+				System.out.print(ip);
+				System.out.print(":");
+				System.out.print(port);
+				System.out.println();
+			}
+		}
+		
+		private void processLoop() throws IOException{
+			System.out.println("SKUL".getBytes().length);
+			
+			Socket socket = serverSocket.accept();
+			
+			System.out.print("Client connected - ");
+			System.out.print(socket.getInetAddress().toString());
+			System.out.println();
+			System.out.println();
+			
+			DataInputStream input = new DataInputStream(
+			socket.getInputStream());
+			DataOutputStream output = new DataOutputStream(
+			socket.getOutputStream());
+
+			int requestType = input.readByte();
+
+			switch(requestType)
+			{
+				case 1: 
+					System.out.println("Register request");
+					register(input, output, socket.getInetAddress()); 
+					break;
+				case 2:
+					System.out.println("Register request");
+					infoRequest(input, output);
+					break;
+				default: System.out.println("Invalid request type ("+requestType+")" ); break;
+			}				
+		
+			socket.close();
+			//serverSocket.close();
+			
+			System.out.println("Client disconnected");
+		}
+		
 		public void run(){
 			try{
-				ServerSocket serverSocket = new ServerSocket(listenPort);
-				Socket socket = serverSocket.accept();
-				
-				System.out.print("Client connected - ");
-				System.out.print(socket.getInetAddress().toString());
-				System.out.println();
-				System.out.println();
-				
-				DataInputStream input = new DataInputStream(
-				socket.getInputStream());
-				DataOutputStream output = new DataOutputStream(
-				socket.getOutputStream());
-
-				// Read magic number from socket
-				byte magicByte1 = input.readByte();
-				byte magicByte2 = input.readByte();
-				byte magicByte3 = input.readByte();
-				byte magicByte4 = input.readByte();
-				
-				String magicNum = "" +
-				((char) magicByte1) +
-				((char) magicByte2) +
-				((char) magicByte3) +
-				((char) magicByte4);
-				
-				if (magicNum.equals("SKUL")){
-					
-					int requestType = input.readByte();
-
-					if (requestType == 1){ /* Register request */
-						
-						// Read phone number from socket
-						int phoneNumLength = input.readByte();
-						
-						byte[] phoneNumBytes = new byte[phoneNumLength];
-						
-						input.readFully(phoneNumBytes);
-						
-						String phoneNum = new String(phoneNumBytes);
-						
-						// Read ip and port bytes from socket
-						byte ipByte1 = input.readByte();
-						byte ipByte2 = input.readByte();
-						byte ipByte3 = input.readByte();
-						byte ipByte4 = input.readByte();
-						byte portByte1 = input.readByte();
-						byte portByte2 = input.readByte();
-						
-						int ip = (ipByte1 << 24) | (ipByte2 << 16) |
-						(ipByte3 << 8) | (ipByte4);
-						int port = ((portByte1 << 8) & 0xff00) |
-						(portByte2 & 0xff);
-						
-						// Add value to table
-						phoneTable.put(phoneNum, new PhoneInfo(ip, port));
-						
-						// Indicate success
-						output.writeByte(1);
-						
-						// Logging
-						System.out.print("+ Phone info added ");
-						System.out.print(phoneNum);
-						System.out.print(" ");
-						System.out.print(ipByte1);
-						System.out.print(".");
-						System.out.print(ipByte2);
-						System.out.print(".");
-						System.out.print(ipByte3);
-						System.out.print(".");
-						System.out.print(ipByte4);
-						System.out.print(":");
-						System.out.print(port);
-						System.out.println();
-						
-					} else if (requestType == 2){ /* Phone info request */
-						
-						// Read phone number from socket
-						int phoneNumLength = input.readByte();
-						
-						byte[] phoneNumBytes = new byte[phoneNumLength];
-						
-						input.readFully(phoneNumBytes);
-						
-						String phoneNum = new String(phoneNumBytes);
-						
-						// Get phone info from table
-						PhoneInfo info = phoneTable.get(
-						new String(phoneNumBytes));
-						
-						if (info == null){
+				while(true)
+					processLoop();
 							
-							// Indicate success
-							output.writeByte(0);
-							
-							// Logging
-							System.out.print("! Request FAIL ");
-							System.out.print(phoneNum);
-							System.out.println();
-						} else {
-						
-							// Indicate success
-							output.writeByte(1);
-							
-							int ip = info.ip;
-							int port = info.port;
-							
-							// Write ip and port to socket
-							byte ipByte1 = (byte) (ip >> 24);
-							byte ipByte2 = (byte) (ip >> 16);
-							byte ipByte3 = (byte) (ip >> 8 );
-							byte ipByte4 = (byte) (ip);
-							byte portByte1 = (byte) (port >> 8);
-							byte portByte2 = (byte) (port);
-							
-							output.writeByte(ipByte1);
-							output.writeByte(ipByte2);
-							output.writeByte(ipByte3);
-							output.writeByte(ipByte4);
-							output.writeByte(portByte1);
-							output.writeByte(portByte2);
-						
-							// Logging
-							System.out.print("? Phone info requested ");
-							System.out.print(phoneNum);
-							System.out.print(" ");
-							System.out.print(ip);
-							System.out.print(":");
-							System.out.print(port);
-							System.out.println();
-						}
-					}					
-				}
-				
-				socket.close();
-				serverSocket.close();
-				
-				System.out.println("Client disconnected");
-				
 			} catch (IOException exc){
 				exc.printStackTrace();
 			}
 			
 			// Start a new listen thread, then this one ends
-			SwitchStation2.this.start();
+//			SwitchStation2.this.start();
 		}
 	}
 }
