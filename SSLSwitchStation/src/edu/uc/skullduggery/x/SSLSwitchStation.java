@@ -5,6 +5,7 @@ import java.net.*;
 import java.util.*;
 
 //import javax.net.*;
+import javax.net.ServerSocketFactory;
 import javax.net.ssl.*;
 
 public class SSLSwitchStation {
@@ -69,9 +70,9 @@ public class SSLSwitchStation {
 			ServerSocket acceptSocket;
 			Socket connection;
 			try{
-				acceptSocket = SSLServerSocketFactory.getDefault().
-				createServerSocket(listenPort);
-//				((SSLServerSocket) acceptSocket).setEnabledCipherSuites(SSLCIPHERSUITES);
+				acceptSocket = ServerSocketFactory.getDefault().createServerSocket(listenPort);
+				//acceptSocket = SSLServerSocketFactory.getDefault().				createServerSocket(listenPort);
+				//((SSLServerSocket) acceptSocket).setEnabledCipherSuites(SSLCIPHERSUITES);
 				acceptSocket.setSoTimeout(100);
 				while (! letDie){
 					try{

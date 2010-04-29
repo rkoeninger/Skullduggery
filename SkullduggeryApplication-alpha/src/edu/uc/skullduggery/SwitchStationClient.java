@@ -2,6 +2,8 @@ package edu.uc.skullduggery;
 
 import java.io.*;
 import java.net.*;
+
+import javax.net.SocketFactory;
 import javax.net.ssl.*;
 
 /**
@@ -82,8 +84,9 @@ public class SwitchStationClient {
 		 */
 		for (int i = 0; i < 300; ++i){
 			try{
-				connection = (SSLSocket) SSLSocketFactory.getDefault().createSocket();
-//				((SSLSocket) connection).setEnabledCipherSuites(Constants.SSLCIPHERSUITES);
+				//connection = SSLSocketFactory.getDefault().createSocket();
+				//((SSLSocket) connection).setEnabledCipherSuites(Constants.SSLCIPHERSUITES);
+				connection = SocketFactory.getDefault().createSocket();
 				connection.connect(this.serverAddress, 100);
 				break;
 			}catch (SocketTimeoutException ste){
