@@ -82,7 +82,8 @@ public class SwitchStationClient {
 		 */
 		for (int i = 0; i < 300; ++i){
 			try{
-				connection = SSLSocketFactory.getDefault().createSocket();
+				connection = (SSLSocket) SSLSocketFactory.getDefault().createSocket();
+				((SSLSocket) connection).setEnabledCipherSuites(Constants.SSLCIPHERSUITES);
 				connection.connect(this.serverAddress, 100);
 				break;
 			}catch (SocketTimeoutException ste){
@@ -136,7 +137,7 @@ public class SwitchStationClient {
 				DataOutputStream out = new DataOutputStream(
 				connection.getOutputStream());
 				
-//				out.write(Constants.MAGICBYTES);
+				out.write(Constants.MAGICBYTES);
 				out.writeByte(1); // Flag for register packet
 				out.writeByte(phoneNum.length());
 				out.write(phoneNum.getBytes());
@@ -180,7 +181,7 @@ public class SwitchStationClient {
 				DataOutputStream out = new DataOutputStream(
 				connection.getOutputStream());
 				
-//				out.write(Constants.MAGICBYTES);
+				out.write(Constants.MAGICBYTES);
 				out.writeByte(2);
 				out.writeByte(phoneNum.length());
 				out.write(phoneNum.getBytes());
@@ -216,7 +217,7 @@ public class SwitchStationClient {
 				DataOutputStream out = new DataOutputStream(
 				connection.getOutputStream());
 
-//				out.write(Constants.MAGICBYTES);
+				out.write(Constants.MAGICBYTES);
 				out.writeByte(3);
 				out.writeLong(sessionKey);
 				out.flush();
@@ -252,7 +253,7 @@ public class SwitchStationClient {
 				DataOutputStream out = new DataOutputStream(
 				connection.getOutputStream());
 
-//				out.write(Constants.MAGICBYTES);
+				out.write(Constants.MAGICBYTES);
 				out.writeByte(4);
 				out.writeLong(sessionKey);
 				out.writeByte(phoneNum.length());
