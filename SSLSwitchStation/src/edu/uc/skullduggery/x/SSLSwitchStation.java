@@ -71,6 +71,7 @@ public class SSLSwitchStation {
 			Socket connection;
 			try{
 				acceptSocket = ServerSocketFactory.getDefault().createServerSocket(listenPort);
+				//TODO: Establish a SSL Server socket.
 				//acceptSocket = SSLServerSocketFactory.getDefault().				createServerSocket(listenPort);
 				//((SSLServerSocket) acceptSocket).setEnabledCipherSuites(SSLCIPHERSUITES);
 				acceptSocket.setSoTimeout(100);
@@ -259,6 +260,15 @@ public class SSLSwitchStation {
 						connection.getInputStream());
 				DataOutputStream output = new DataOutputStream(
 						connection.getOutputStream());
+				
+				
+				byte[] magicBytes = new byte[4];
+				input.readFully(magicBytes);
+				if(!java.util.Arrays.equals(magicBytes, "SKUL".getBytes()))
+				{
+					System.err.println("Magic bytes not equal. :(");
+					return;
+				}
 
 				int requestType = input.readByte();
 				switch(requestType)
@@ -283,6 +293,7 @@ public class SSLSwitchStation {
 						System.out.println("Invalid request type: " + requestType);
 						break;
 				}
+				System.out.println("Request over.");
 				output.flush();
 			}catch (IOException ioe){
 				//abort communication
@@ -291,6 +302,7 @@ public class SSLSwitchStation {
 			}finally{
 				try{
 					connection.close();
+					System.out.println("Client disconnected");
 				}catch (IOException ioe){}
 				processThreads.remove(this);
 			}
