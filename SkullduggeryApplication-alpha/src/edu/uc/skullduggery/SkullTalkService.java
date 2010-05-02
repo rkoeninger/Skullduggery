@@ -99,19 +99,25 @@ public class SkullTalkService{
 	 * Contact info and interface for the proxy (switch station) server.
 	 */
 	private SwitchStationClient serverComm;
-	private final String serverIP;// = "10.0.2.2";
+	private final String serverIP =
+	//Comment out the first / of the first line to toggle hardcoded IP.
+	/*
+	 "192.168.200.11";/*/
+	"10.0.2.2";
+	//*/
+	
 	private final static int serverPort = 9002;
-	private final static int listenPort = 9003;
+	private final static int listenPort = 9004;
 	
 	public SkullTalkService(Handler uiHandler, ContextWrapper context){
 		this.uiHandler = uiHandler;
 		this.appContext = context;
 		phoneNumber = ((TelephonyManager) context.getSystemService(
 		Context.TELEPHONY_SERVICE)).getLine1Number();
-		//
+		
 		//Setup for droid - Use server IP if it's my phone.
 		//TODO: Convert this into a host name or user-configured value.
-		serverIP = (phoneNumber == "16147380764")? "192.168.200.11" : "10.0.2.2";
+//		serverIP = /*(phoneNumber == "6147380764")?*/ "192.168.200.11";// : "10.0.2.2";
 		
 		serverComm = new SwitchStationClient();
 	}
@@ -255,7 +261,7 @@ public class SkullTalkService{
 	private void performHandshake(DataInputStream dis, DataOutputStream dos)
 	throws InvalidKeySpecException, IOException
 	{
-		
+		 
 		/*
 		 * Generate local phone's keys for this conversation.
 		 */
@@ -356,31 +362,35 @@ public class SkullTalkService{
 				 * Get the contact info of the remote phone from server.
 				 * If could not get info, report error to UI and quit.
 				 */
-				Object[] retvals = new Object[2];
+				Object[] retvals = new Object[1];
 				serverComm.request(remotePhoneNumber, retvals);
-				InetAddress IP = (InetAddress) retvals[0];
-				int port32 = ((Short) retvals[1]).shortValue();
-				InetSocketAddress remotePhoneAddress = new InetSocketAddress(IP, port32);
+				InetSocketAddress remotePhoneAddress = (InetSocketAddress) retvals[0];
+				
+				Log.d("Skullduggery", "CONNECT - Connecting to " + remotePhoneAddress);
 				
 				/* 
 				 * Open connection to remote phone.
 				 * This is analogous to dialing.
-				 * Makes 300 connect attempts at 100ms a piece for 30s timeout.
+				 * Makes 120 connect attempts at 250ms a piece for 30s timeout.
 				 * Open input and output streams.
 				 * If could not connect, report error to UI and cleanup + quit.
 				 */
-				for (int x = 0; x < 300; ++x){
+				
+				callSocket = new Socket();
+				/*
+				for (int x = 0; x < 120; ++x){
 					try{
-						callSocket = new Socket();
-						callSocket.connect(remotePhoneAddress, 100);
+						callSocket.connect(remotePhoneAddress, 250);
+						break;
 					}catch (SocketTimeoutException ste){
 						callSocket.close();
 						continue;
 					}catch (Exception e){
 						throw new Error(e);
 					}
-				}
-				if (! callSocket.isConnected()){
+				}*/
+				callSocket.connect(remotePhoneAddress, 30000);
+				if (! callSocket.isConnected()){ 
 					throw new SocketException();
 				}
 				DataInputStream dis =
@@ -425,12 +435,12 @@ public class SkullTalkService{
 				internalStartTalking();
 				
 			}catch (InvalidKeySpecException ikse){
-				Log.e(TAG, "error'd", ikse);
+				Log.e(TAG, "Invalid Key Spec Exception", ikse);
 				uiHandler.sendMessage(Message.obtain(
 				uiHandler, 1, ikse.getMessage()));
 				hangup();
 			}catch (IOException ioe){
-				Log.e(TAG, "error'd", ioe);
+				Log.e(TAG, "IO Exception", ioe);
 				uiHandler.sendMessage(Message.obtain(
 				uiHandler, 1, ioe.getMessage()));
 				hangup();
@@ -484,7 +494,7 @@ public class SkullTalkService{
 			decryptor.init(Cipher.DECRYPT_MODE, localKeys.getPrivate());
 			
 			DataOutputStream out = new DataOutputStream(new CipherOutputStream(
-					callSocket.getOutputStream(), decryptor));
+					dos, decryptor));
 
 			//TODO Generate an AES key
 			KeyGenerator kgen = KeyGenerator.getInstance(
@@ -514,7 +524,7 @@ public class SkullTalkService{
 			ServerSocket serverSocket;
 			try{
 				serverSocket = new ServerSocket(listenPort);
-				serverSocket.setSoTimeout(100);
+				//serverSocket.setSoTimeout(250);
 			}catch (IOException e){
 				throw new Error(e);
 			}
@@ -564,7 +574,9 @@ public class SkullTalkService{
 					} else {
 						dos.write(Constants.MAGICBYTES);
 						dos.write((byte) MessageType.ACCEPT.ordinal());
+						callSocket = newConnection;
 					}
+					
 					
 					/*
 					 * Both phones at this point perform the handshake.

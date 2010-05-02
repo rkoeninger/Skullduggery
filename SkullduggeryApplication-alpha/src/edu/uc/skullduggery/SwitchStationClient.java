@@ -4,7 +4,6 @@ import java.io.*;
 import java.net.*;
 
 import javax.net.SocketFactory;
-import javax.net.ssl.*;
 
 /**
  * This class encapsulates all the behaviors involved in communicating with the
@@ -197,8 +196,7 @@ public class SwitchStationClient {
 				
 				byte[] ipBytes = new byte[4];
 				in.readFully(ipBytes);
-				retvals[0] = InetAddress.getByAddress(ipBytes);
-				retvals[1] = new Short(in.readShort());
+				retvals[0] = new InetSocketAddress(InetAddress.getByAddress(ipBytes), in.readShort());
 			}
 		});
 	}

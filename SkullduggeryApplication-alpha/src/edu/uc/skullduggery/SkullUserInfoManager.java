@@ -52,7 +52,7 @@ public class SkullUserInfoManager {
 		String[] columns = {"UserID", "Number","Salt","PubKeyHash"};
 		String[] selectionArgs = {number};
 		
-		Cursor skullCurs = sqldb.query(SkullStorage ,columns,"Number = ?", selectionArgs,null,null,null);
+		Cursor skullCurs = sqldb.query(tableName,columns,"Number = ?", selectionArgs,null,null,null);
 		if(skullCurs.moveToNext())
 		{
 			int	dataUserId = skullCurs.getInt(skullCurs.getColumnIndex("UserID"));

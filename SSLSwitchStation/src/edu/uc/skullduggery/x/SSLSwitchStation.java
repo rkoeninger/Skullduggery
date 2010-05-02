@@ -6,7 +6,6 @@ import java.util.*;
 
 //import javax.net.*;
 import javax.net.ServerSocketFactory;
-import javax.net.ssl.*;
 
 public class SSLSwitchStation {
 	public static final String[] SSLCIPHERSUITES = 
@@ -187,8 +186,6 @@ public class SSLSwitchStation {
 			System.out.print(phoneNum);
 			System.out.print(" ");
 			System.out.print(ip);
-			System.out.print(":");
-			System.out.print(port);
 			System.out.println();
 		}
 		
