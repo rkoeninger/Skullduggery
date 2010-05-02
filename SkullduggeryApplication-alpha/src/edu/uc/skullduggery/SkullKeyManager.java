@@ -25,6 +25,7 @@ public class SkullKeyManager {
 	private final static String sql_createKeyTable = Constants.KEYTABLESCHEMA;
 	private final static String RSA = Constants.ASYMALGORITHM;
 	private final static int RSAKeySize = Constants.ASYMKEYSIZE;
+	
 	//private final static String Password = Constants.KEYFILEPASS;
 	private SQLiteDatabase _sqldb;
 	

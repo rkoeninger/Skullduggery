@@ -173,6 +173,16 @@ public class SkullTalkService{
 		}
 	}
 	
+	private void closeCall(){
+		if(callSocket == null || !callSocket.isConnected()) return;
+		try{
+			callSocket.close();
+		}
+		catch(Exception e){
+			
+		}
+	}
+	
 	public synchronized void hangup(){
 		if ((callState == CallState.TALKING) ||
 		(callState == CallState.CALLING)){
@@ -329,6 +339,7 @@ public class SkullTalkService{
 	public class CallThread extends Thread{
 
 		private int debug(String msg){return SkullTalkService.debug("CALL:" + msg);}
+		@SuppressWarnings("unused")
 		private int info(String msg){return SkullTalkService.info("CALL" + msg);}
 		
 		private String remotePhoneNumber;
@@ -391,6 +402,7 @@ public class SkullTalkService{
 				debug("CONNECT - Connecting to " + remotePhoneAddress);
 				callSocket = new Socket();
 				/*
+				 * Was getting "Bad Socket" error - Need to handle hangups in this, but whatever.
 				for (int x = 0; x < 120; ++x){
 					try{
 						callSocket.connect(remotePhoneAddress, 250);
@@ -455,34 +467,32 @@ public class SkullTalkService{
 				uiHandler.sendMessage(Message.obtain(
 				uiHandler, 1, ikse.getMessage()));
 				hangup();
+				closeCall();
+				hangup();
 			}catch (IOException ioe){
 				Log.e(TAG, "IO Exception", ioe);
 				uiHandler.sendMessage(Message.obtain(
 				uiHandler, 1, ioe.getMessage()));
+				closeCall();
 				hangup();
-			} catch (InvalidKeyException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (NoSuchAlgorithmException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (NoSuchPaddingException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}finally{
-
-				/*
-				 * Make sure socket is cleaned up.
-				 */
-				if (callSocket != null){
-					if (callSocket.isConnected()){
-						try{ callSocket.close(); }
-						catch (IOException ioe2){}
-					}
-				}
-				callSocket = null;
-				callThread = null;
-
+			} catch (InvalidKeyException ike) {
+				Log.e(TAG, "IO Exception", ike);
+				uiHandler.sendMessage(Message.obtain(
+				uiHandler, 1, ike.getMessage()));
+				closeCall();
+				hangup();
+			} catch (NoSuchAlgorithmException nsae) {
+				Log.e(TAG, "IO Exception", nsae);
+				uiHandler.sendMessage(Message.obtain(
+				uiHandler, 1, nsae.getMessage()));
+				closeCall();
+				hangup();
+			} catch (NoSuchPaddingException nspe) {
+				Log.e(TAG, "IO Exception", nspe);
+				uiHandler.sendMessage(Message.obtain(
+				uiHandler, 1, nspe.getMessage()));
+				closeCall();
+				hangup();
 			}
 		}
 	}
@@ -637,55 +647,38 @@ public class SkullTalkService{
 					Log.e(TAG, "error'd", ioe);
 					uiHandler.sendMessage(Message.obtain(
 					uiHandler, 1, ioe.getMessage()));
+					closeCall();
 					hangup();
 				} catch (InvalidKeyException ike) {
 					uiHandler.sendMessage(Message.obtain(
 					uiHandler, 1, ike.getMessage()));
+					closeCall();
+					hangup();
 				} catch (InvalidKeySpecException ikse) {
 					uiHandler.sendMessage(Message.obtain(
 					uiHandler, 1, ikse.getMessage()));
+					closeCall();
+					hangup();
 				} catch (NoSuchAlgorithmException nsae) {
 					uiHandler.sendMessage(Message.obtain(
 					uiHandler, 1, nsae.getMessage()));
+					closeCall();
+					hangup();
 				} catch (NoSuchPaddingException nspe) {
 					uiHandler.sendMessage(Message.obtain(
 					uiHandler, 1, nspe.getMessage()));
-				}finally{
-					
-					/*
-					 * Make sure socket is cleaned up.
-					 */
-					if (callSocket != null){
-						if (! callSocket.isClosed()){
-							try{ callSocket.close(); }
-							catch (IOException ioe2){}
-						}
-					}
-					callSocket = null;
-					acceptThread = null;
-					
+					closeCall();
+					hangup();
 				}
 				
 			}
-			
-			/*
-			 * Make sure socket is cleaned up.
-			 */
-			if (callSocket != null){
-				if (! callSocket.isClosed()){
-					try{ callSocket.close(); }
-					catch (IOException ioe2){}
-				}
-			}
-			callSocket = null;
-			acceptThread = null;
-
 		}
 	}
 	
 	public class TalkThread extends Thread{
 
 		private int debug(String msg){return SkullTalkService.debug("TALK:" + msg);}
+		@SuppressWarnings("unused")
 		private int info(String msg){return SkullTalkService.info("TALK:" + msg);}
 		
 		public void run(){
@@ -812,11 +805,12 @@ public class SkullTalkService{
 			}catch (Exception e){
 				throw new Error(e);
 			}finally{
-				
 				/*
 				 * Make sure AudioRecord and AudioTrack are cleaned up.
 				 * Make sure socket is closed and cleaned up.
 				 */
+				closeCall();
+				
 				if (ain != null)
 					if (ain.getRecordingState() ==
 					AudioRecord.RECORDSTATE_RECORDING)
