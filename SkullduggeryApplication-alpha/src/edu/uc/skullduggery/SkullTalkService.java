@@ -58,8 +58,12 @@ import android.util.*;
 
 public class SkullTalkService{
 	
+	
 	/* Logging tag for Android logcat */
 	private static final String TAG = "SkullTalk";
+	
+	private static final int debug(String msg){ return Log.d(TAG, msg); }
+	private static final int info(String msg){ return Log.i(TAG, msg); }
 	
 	/* Audio encoding parameters */
 	private static final int sampleRate = 8000;
@@ -101,7 +105,7 @@ public class SkullTalkService{
 	private SwitchStationClient serverComm;
 	private final String serverIP =
 	//Comment out the first / of the first line to toggle hardcoded IP.
-	/*
+	//*
 	 "192.168.200.11";/*/
 	"10.0.2.2";
 	//*/
@@ -261,7 +265,7 @@ public class SkullTalkService{
 	private void performHandshake(DataInputStream dis, DataOutputStream dos)
 	throws InvalidKeySpecException, IOException
 	{
-		 
+		debug("Performing handshake");
 		/*
 		 * Generate local phone's keys for this conversation.
 		 */
@@ -272,20 +276,24 @@ public class SkullTalkService{
 		}catch (NoSuchAlgorithmException nsae){
 			throw new Error(nsae); // Can't recover from this
 		}
+		debug("Retrieving keys");
 		localKeys = keyManager.getKeys();
 		RSAPublicKey pub = (RSAPublicKey) localKeys.getPublic();
 		localPubMod = pub.getModulus();
 		localPubExp = pub.getPublicExponent();
+		info("Public exponent: " + localPubExp);		
 		
 		/*
 		 * Write our public key Modulus and Exponent.
 		 * Each one is written in its own packet.
 		 */
+		debug("Writing mod");
 		dos.write(Constants.MAGICBYTES);
 		dos.write((byte) MessageType.PUBMOD.ordinal());
 		dos.writeInt(localPubMod.toByteArray().length);
 		dos.write(localPubMod.toByteArray());
 		
+		debug("Writing exp");
 		dos.write(Constants.MAGICBYTES);
 		dos.write((byte) MessageType.PUBEXP.ordinal());
 		dos.writeInt(localPubExp.toByteArray().length);
@@ -295,6 +303,7 @@ public class SkullTalkService{
 		 * Read remote phone's public key Modulus and Exponent.
 		 * Each one is written in its own packet.
 		 */
+		debug("Reading foreign mod, exp");
 		readMagic(dis);
 		readType(dis, MessageType.PUBMOD);
 		byte[] remotePubModBytes = new byte[dis.readInt()];
@@ -305,7 +314,7 @@ public class SkullTalkService{
 		dis.readFully(remotePubExpBytes);
 		BigInteger remotePubMod = new BigInteger(remotePubModBytes);
 		BigInteger remotePubExp = new BigInteger(remotePubExpBytes);
-		
+		info("Public Exp: " + remotePubExp);
 		
 		/*
 		 * Generate a public key for the remote phone from the
@@ -318,6 +327,10 @@ public class SkullTalkService{
 	}
 	
 	public class CallThread extends Thread{
+
+		private int debug(String msg){return SkullTalkService.debug("CALL:" + msg);}
+		private int info(String msg){return SkullTalkService.info("CALL" + msg);}
+		
 		private String remotePhoneNumber;
 		public CallThread(String number){ remotePhoneNumber = number; }
 		
@@ -332,6 +345,7 @@ public class SkullTalkService{
 			 * Create encrypt (outgoing) cipher from remote public key.
 			 * Create decrypt (incoming) cipher from local private key.
 			 */
+			debug("Creating ciphers");
 			Cipher encryptor =
 			Cipher.getInstance(remotePublicKey.getAlgorithm());
 			encryptor.init(Cipher.ENCRYPT_MODE, remotePublicKey);
@@ -342,6 +356,7 @@ public class SkullTalkService{
 			DataInputStream in = new DataInputStream(new CipherInputStream(
 					callSocket.getInputStream(), encryptor));
 			
+			debug("Reading AES key");
 			//Read an AES key from the stream
 			readMagic(in);
 			readType(in, MessageType.SESKEY);
@@ -352,7 +367,6 @@ public class SkullTalkService{
 			else
 				encSesKey = new byte[Constants.SYMKEYSIZE];
 			sessionKey = new SecretKeySpec(encSesKey, Constants.SYMMALGORITHM);
-			
 		}
 		
 		public void run(){
@@ -366,7 +380,6 @@ public class SkullTalkService{
 				serverComm.request(remotePhoneNumber, retvals);
 				InetSocketAddress remotePhoneAddress = (InetSocketAddress) retvals[0];
 				
-				Log.d("Skullduggery", "CONNECT - Connecting to " + remotePhoneAddress);
 				
 				/* 
 				 * Open connection to remote phone.
@@ -375,7 +388,7 @@ public class SkullTalkService{
 				 * Open input and output streams.
 				 * If could not connect, report error to UI and cleanup + quit.
 				 */
-				
+				debug("CONNECT - Connecting to " + remotePhoneAddress);
 				callSocket = new Socket();
 				/*
 				for (int x = 0; x < 120; ++x){
@@ -393,11 +406,13 @@ public class SkullTalkService{
 				if (! callSocket.isConnected()){ 
 					throw new SocketException();
 				}
+				debug("Connected to remote address: " + remotePhoneAddress);
 				DataInputStream dis =
 				new DataInputStream(callSocket.getInputStream());
 				DataOutputStream dos =
 				new DataOutputStream(callSocket.getOutputStream());
 	
+				debug("Writing CALL packet");
 				/*
 				 * The calling phone first sends a CALL packet containing
 				 * info about the caller and calling phone.
@@ -407,6 +422,7 @@ public class SkullTalkService{
 				dos.writeInt(phoneNumber.length());
 				dos.write(phoneNumber.getBytes());
 				
+				debug("Receiving response");
 				/*
 				 * Make sure we receive an ACCEPT packet in return or fail.
 				 */
@@ -472,6 +488,8 @@ public class SkullTalkService{
 	}
 	
 	public class AcceptThread extends Thread{
+		private int debug(String msg){return SkullTalkService.debug("ACCEPT:" + msg);}
+		private int info(String msg){return SkullTalkService.info("ACCEPT:" + msg);}
 		private int listenPort;
 		public AcceptThread(int port){ listenPort = port; }
 		
@@ -479,7 +497,6 @@ public class SkullTalkService{
 		throws NoSuchAlgorithmException, NoSuchPaddingException,
 		InvalidKeySpecException, InvalidKeyException, IOException
 		{
-
 			performHandshake(dis, dos);
 		
 			/*
@@ -496,6 +513,7 @@ public class SkullTalkService{
 			DataOutputStream out = new DataOutputStream(new CipherOutputStream(
 					dos, decryptor));
 
+			debug("Creating secret key");
 			//TODO Generate an AES key
 			KeyGenerator kgen = KeyGenerator.getInstance(
 			Constants.SYMMALGORITHM);
@@ -505,6 +523,7 @@ public class SkullTalkService{
 			sessionKey = new SecretKeySpec(
 			sesKeyTemp.getEncoded(), sesKeyTemp.getAlgorithm());
 			
+			debug("Writing secret key");
 			//TODO Send the AES key
 			out.write(Constants.MAGICBYTES);
 			out.writeInt(SkullMessage.MessageType.SESKEY.ordinal());
@@ -521,7 +540,9 @@ public class SkullTalkService{
 			 * Set listen port and timeout.
 			 * If this fails, then we won't be able to receive calls. 
 			 */
+			debug("Initializing server socket");
 			ServerSocket serverSocket;
+			
 			try{
 				serverSocket = new ServerSocket(listenPort);
 				//serverSocket.setSoTimeout(250);
@@ -546,7 +567,9 @@ public class SkullTalkService{
 					 * If connection times-out an exception is thrown
 					 * and we just loop again.
 					 */
+					debug("Waiting for a connection");
 					newConnection = serverSocket.accept();
+					debug("Connection established ");
 					DataInputStream dis =
 					new DataInputStream(newConnection.getInputStream());
 					DataOutputStream dos =
@@ -555,26 +578,31 @@ public class SkullTalkService{
 					/*
 					 * Read the initial CALL packet sent by the caller.
 					 */
+					debug("Reading client info");
 					readMagic(dis);
 					readType(dis, MessageType.CALL);
 					int remotePhoneNumberLength = dis.readInt();
 					byte[] remotePhoneNumberBytes =
 					new byte[remotePhoneNumberLength];
 					dis.readFully(remotePhoneNumberBytes);
-					remotePhoneNumber = new String(remotePhoneNumberBytes);
+					String newRemotePhoneNumber = new String(remotePhoneNumberBytes);
 
 					/*
 					 * After receiving the CALL packet,
 					 * return an ACCEPT or a BUSY packet.
 					 */
 					if (callState != CallState.LISTENING){
+						info("Call rejected; busy.");
 						dos.write(Constants.MAGICBYTES);
 						dos.write((byte) MessageType.BUSY.ordinal());
+						newConnection.close();
 						continue;
 					} else {
+						info("Call accepted");
 						dos.write(Constants.MAGICBYTES);
 						dos.write((byte) MessageType.ACCEPT.ordinal());
 						callSocket = newConnection;
+						remotePhoneNumber = newRemotePhoneNumber;
 					}
 					
 					
@@ -656,6 +684,10 @@ public class SkullTalkService{
 	}
 	
 	public class TalkThread extends Thread{
+
+		private int debug(String msg){return SkullTalkService.debug("TALK:" + msg);}
+		private int info(String msg){return SkullTalkService.info("TALK:" + msg);}
+		
 		public void run(){
 
 			DataInputStream in;
@@ -668,7 +700,7 @@ public class SkullTalkService{
 				/*
 				 * Check if the remote public key matches the stored hash
 				 */
-				
+				debug("Checking remote public key");
 				SkullUserInfo remoteUser = userManager.getInstance(remotePhoneNumber);
 				if(!remoteUser.matchStoredPubKey(remotePublicKey.getEncoded()))
 				{
@@ -683,6 +715,7 @@ public class SkullTalkService{
 				 * Create encrypt (outgoing) cipher from remote public key.
 				 * Create decrypt (incoming) cipher from local private key.
 				 */
+				debug("Creating encrypted streams");
 				Cipher encryptor =
 				Cipher.getInstance(sessionKey.getAlgorithm());
 				encryptor.init(Cipher.ENCRYPT_MODE, sessionKey);
@@ -693,6 +726,7 @@ public class SkullTalkService{
 				/*
 				 * Open streams and prepare audio tracks.
 				 */
+				debug("Initializing audio transmission system");
 				byte[] buf = new byte[1024 * 4];
 				int bytesRead = 0;
 				in = new DataInputStream(new CipherInputStream(
@@ -716,6 +750,7 @@ public class SkullTalkService{
 				 * The loop ends if the other phone hangs-up, disconnects
 				 * or this phone hangs-up.
 				 */
+				debug("Starting to record");
 				while (true) {
 
 					if (ain.getRecordingState() !=
@@ -798,7 +833,6 @@ public class SkullTalkService{
 					}
 				}
 				talkThread = null;
-				
 			}
 		}
 	}
