@@ -359,7 +359,7 @@ public class SkullTalkService{
 		
 		private void doHandshake(DataInputStream dis, DataOutputStream dos)
 		throws InvalidKeySpecException, IOException,
-		NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException
+		NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException
 		{
 			
 			performHandshake(dis, dos);
@@ -377,12 +377,10 @@ public class SkullTalkService{
 			Cipher.getInstance(localKeys.getPrivate().getAlgorithm());
 			decryptor.init(Cipher.DECRYPT_MODE, localKeys.getPrivate());
 			
-			DataInputStream in = new DataInputStream(new CipherInputStream(
-					callSocket.getInputStream(), decryptor));
-			
 			debug("Reading AES key");
-			SkullMessage keyMessage = readMessage(in, MessageType.SESKEY);
-			sessionKey = new SecretKeySpec(keyMessage.getData(),0,Constants.SYMKEYSIZE, Constants.SYMMALGORITHM);
+			SkullMessage keyMessage = readMessage(dis, MessageType.SESKEY);
+			byte[] keyMessageData = decryptor.doFinal(keyMessage.getData());
+			sessionKey = new SecretKeySpec(keyMessageData, Constants.SYMMALGORITHM);
 		}
 		
 		public void run(){
@@ -483,6 +481,18 @@ public class SkullTalkService{
 				uiHandler, 1, nspe.getMessage()));
 				closeCall();
 				hangup();
+			} catch (IllegalBlockSizeException e) {
+				Log.e(TAG, "Illegal Block Size Exception", e);
+				uiHandler.sendMessage(Message.obtain(
+				uiHandler, 1, e.getMessage()));
+				closeCall();
+				hangup();
+			} catch (BadPaddingException e) {
+				Log.e(TAG, "BadPadding Exception", e);
+				uiHandler.sendMessage(Message.obtain(
+				uiHandler, 1, e.getMessage()));
+				closeCall();
+				hangup();
 			}
 		}
 	}
@@ -495,7 +505,7 @@ public class SkullTalkService{
 		
 		private void doHandshake(DataInputStream dis, DataOutputStream dos)
 		throws NoSuchAlgorithmException, NoSuchPaddingException,
-		InvalidKeySpecException, InvalidKeyException, IOException
+		InvalidKeySpecException, InvalidKeyException, IOException, IllegalBlockSizeException, BadPaddingException
 		{
 			performHandshake(dis, dos);
 		
@@ -510,9 +520,6 @@ public class SkullTalkService{
 			Cipher.getInstance(localKeys.getPrivate().getAlgorithm());
 			decryptor.init(Cipher.DECRYPT_MODE, localKeys.getPrivate());
 			
-			DataOutputStream eout = new DataOutputStream(new CipherOutputStream(
-					dos, decryptor));
-
 			debug("Creating secret key");
 			//Generate an AES key
 			KeyGenerator kgen = KeyGenerator.getInstance(
@@ -520,25 +527,16 @@ public class SkullTalkService{
 			kgen.init(Constants.SYMKEYSIZE);
 			SecretKey sesKeyTemp = kgen.generateKey();
 			
-			
 			sessionKey = new SecretKeySpec(
 			sesKeyTemp.getEncoded(), sesKeyTemp.getAlgorithm());
 			
 			debug("Writing secret key");
 			//Send the AES key
-			
 			//FIXME: Try to remedy a 'Too much data for RSA block' error.
 			byte[] sessionKeyBytes = sessionKey.getEncoded();
-			byte[] sessionKeyBytesMessage = new byte[1024];
-			for(int i=0; i<sessionKeyBytes.length; i++)
-				sessionKeyBytesMessage[i] = sessionKeyBytes[i];
-			for(int i=sessionKeyBytes.length; i<sessionKeyBytesMessage.length; i++)
-				sessionKeyBytesMessage[i] = 0;
+			byte[] sessionKeyBytesMessage = encryptor.doFinal(sessionKeyBytes);
 			
-			sendMessage(eout, new SkullMessage(MessageType.SESKEY, sessionKey.getEncoded()));
-			
-			eout.flush();
-			
+			sendMessage(dos, new SkullMessage(MessageType.SESKEY, sessionKeyBytesMessage));
 		}
 		
 		public void run(){
@@ -661,7 +659,18 @@ public class SkullTalkService{
 					uiHandler, 1, nspe.getMessage()));
 					closeCall();
 					hangup();
+				} catch (IllegalBlockSizeException e) {
+					uiHandler.sendMessage(Message.obtain(
+					uiHandler, 1, e.getMessage()));
+					closeCall();
+					hangup();
+				} catch (BadPaddingException e) {
+					uiHandler.sendMessage(Message.obtain(
+					uiHandler, 1, e.getMessage()));
+					closeCall();
+					hangup();
 				} 
+				
 			}
 		}
 	}
