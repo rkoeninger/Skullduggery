@@ -720,9 +720,9 @@ public class SkullTalkService{
 				byte[] buf = new byte[1024 * 4];
 				int bytesRead = 0;
 				in = new DataInputStream(new CipherInputStream(
-						callSocket.getInputStream(), encryptor));
+						callSocket.getInputStream(), decryptor));
 				out = new DataOutputStream(new CipherOutputStream(
-						callSocket.getOutputStream(), decryptor));
+						callSocket.getOutputStream(), encryptor));
 				aout = new AudioTrack(AudioManager.STREAM_VOICE_CALL,
 						sampleRate, channelConfigOut, encoding, buf.length,
 						AudioTrack.MODE_STREAM);
