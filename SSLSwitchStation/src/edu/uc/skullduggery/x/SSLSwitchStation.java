@@ -157,6 +157,14 @@ public class SSLSwitchStation {
 			
 			// Get phone info from table
 			PhoneInfo info = phoneTable.get(phoneNum);
+			if(phoneNum.trim().equals("15555218135"))
+				/*
+				 * If it's an emulated address, give the emulated server IP.
+				 * This will break for the actual phone.
+				 * There really needs to be a way for the emulator to expose
+				 * itself on the actual open-port layer of the swerver.
+				 */
+				info.ip = new InetSocketAddress("10.0.2.2",info.ip.getPort());
 			
 			if (info == null){
 				
@@ -182,7 +190,7 @@ public class SSLSwitchStation {
 			output.writeShort(port);
 		
 			// Logging
-			System.out.print("? Phone info requested ");
+			System.out.print("? Phone info requested #");
 			System.out.print(phoneNum);
 			System.out.print(" ");
 			System.out.print(ip);
@@ -245,7 +253,6 @@ public class SSLSwitchStation {
 		
 		
 		public void run(){
-			
 			try{
 				
 				System.out.print("Client connected - ");

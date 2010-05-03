@@ -105,13 +105,13 @@ public class SkullTalkService{
 		 * Comment out the first / of the first line to toggle hardcoded IP.
 		 * Note: It is difficult to talk between two emulated instances with the emulator's virtual subnet crap
 		 */
-		//*
+		/*
 		 "192.168.200.11";/*/
 		"10.0.2.2";
 		//*/
 	
 	private final static int serverPort = 9002;
-	private final static int listenPort = 9004;
+	private final static int listenPort = 9003;
 	
 	public SkullTalkService(Handler uiHandler, ContextWrapper context){
 		this.uiHandler = uiHandler;
@@ -148,7 +148,7 @@ public class SkullTalkService{
 		keyManager = new SkullKeyManager(appContext);
 		serverComm.connect(serverIP, serverPort);
 		
-		// TODO: How to find our own contact info?
+		// TODO: How to find our own IP address, etc
 		try {
 			serverComm.register(phoneNumber, listenPort);
 		} catch (IOException e) {
@@ -285,37 +285,6 @@ public class SkullTalkService{
 		dos.writeInt(length);
 		dos.write(data, 0, length);
 	}
-
-// TODO: what to do with this?
-/* *****************************************
- * Didn't know what to do with these but I thought they should be in here
- *
-	private void writeMessage(DataOutputStream dos, SkullMessage mes)
-	throws IOException{
-		byte[] hash = mes.getHash();
-		byte[] data = mes.getData();
-		SkullMessage.MessageType mesType = mes.getType();
-		
-		dos.write(Constants.MAGICBYTES);
-		dos.write(hash);
-		dos.writeByte((byte) mesType.ordinal());
-		dos.writeInt(data.length);
-		dos.write(data);
-	}
-	
-	private SkullMessage readMessage(InputStream s) throws IOException{
-		SkullMessage rMessage = null;
-		
-		//      Read MAC from the stream.
-		//      Read Type from the stream.
-		//      Read data length from the stream.
-		//      Read data from the stream.
-		//      Construct a SkullMessage
-		//      Return our SkullMessage
-		return rMessage;
-	}
-*/
-
 	
 	/**
 	 * Key generation and exchange occurs here.
@@ -403,6 +372,7 @@ public class SkullTalkService{
 			Cipher encryptor =
 			Cipher.getInstance(remotePublicKey.getAlgorithm());
 			encryptor.init(Cipher.ENCRYPT_MODE, remotePublicKey);
+			
 			Cipher decryptor =
 			Cipher.getInstance(localKeys.getPrivate().getAlgorithm());
 			decryptor.init(Cipher.DECRYPT_MODE, localKeys.getPrivate());
@@ -412,7 +382,7 @@ public class SkullTalkService{
 			
 			debug("Reading AES key");
 			SkullMessage keyMessage = readMessage(in, MessageType.SESKEY);
-			sessionKey = new SecretKeySpec(keyMessage.getData(), Constants.SYMMALGORITHM);
+			sessionKey = new SecretKeySpec(keyMessage.getData(),0,Constants.SYMKEYSIZE, Constants.SYMMALGORITHM);
 		}
 		
 		public void run(){
@@ -540,11 +510,11 @@ public class SkullTalkService{
 			Cipher.getInstance(localKeys.getPrivate().getAlgorithm());
 			decryptor.init(Cipher.DECRYPT_MODE, localKeys.getPrivate());
 			
-			DataOutputStream out = new DataOutputStream(new CipherOutputStream(
+			DataOutputStream eout = new DataOutputStream(new CipherOutputStream(
 					dos, decryptor));
 
 			debug("Creating secret key");
-			//TODO Generate an AES key
+			//Generate an AES key
 			KeyGenerator kgen = KeyGenerator.getInstance(
 			Constants.SYMMALGORITHM);
 			kgen.init(Constants.SYMKEYSIZE);
@@ -555,9 +525,19 @@ public class SkullTalkService{
 			sesKeyTemp.getEncoded(), sesKeyTemp.getAlgorithm());
 			
 			debug("Writing secret key");
-			//TODO Send the AES key
-			sendMessage(out, new SkullMessage(MessageType.SESKEY, sessionKey.getEncoded()));
-			out.flush();
+			//Send the AES key
+			
+			//FIXME: Try to remedy a 'Too much data for RSA block' error.
+			byte[] sessionKeyBytes = sessionKey.getEncoded();
+			byte[] sessionKeyBytesMessage = new byte[1024];
+			for(int i=0; i<sessionKeyBytes.length; i++)
+				sessionKeyBytesMessage[i] = sessionKeyBytes[i];
+			for(int i=sessionKeyBytes.length; i<sessionKeyBytesMessage.length; i++)
+				sessionKeyBytesMessage[i] = 0;
+			
+			sendMessage(eout, new SkullMessage(MessageType.SESKEY, sessionKey.getEncoded()));
+			
+			eout.flush();
 			
 		}
 		
@@ -682,7 +662,6 @@ public class SkullTalkService{
 					closeCall();
 					hangup();
 				} 
-				
 			}
 		}
 	}
@@ -753,7 +732,7 @@ public class SkullTalkService{
 					 * Don't bother if we aren't talking.
 					 */
 					if (callState == CallState.TALKING){
-						bytesRead = ain.read(buf, 0, buf.length);
+						bytesRead += ain.read(buf, bytesRead, buf.length);
 					}
 					
 					/*
@@ -765,23 +744,32 @@ public class SkullTalkService{
 						sendMessage(out, new SkullMessage(MessageType.HANGUP));
 						break;
 					}
-					sendMessage(out, MessageType.VOICE, buf, bytesRead);
+					/*
+					 * Only send data if we've got a substantial message to send.
+					 */
+					if(bytesRead >= 128){
+						sendMessage(out, MessageType.VOICE, buf, bytesRead);
+						bytesRead = 0;
+					}
 
 					/*
 					 * Read a packet of voice data.
 					 * If it is a HANGUP packet, then terminate thread.
+					 * Read enough packets to flush out the cipher queue.
 					 */
-					SkullMessage audioDataIn = readMessage(in);
-					if (audioDataIn.getType() == MessageType.HANGUP){
-						throw new EOFException("Remote phone hung-up");
-					} else if (audioDataIn.getType() != MessageType.VOICE){
-						throw new IOException("Unexpected packet type");
+					while(in.available() >= 128){
+						SkullMessage audioDataIn = readMessage(in);
+						if (audioDataIn.getType() == MessageType.HANGUP){
+							throw new EOFException("Remote phone hung-up");
+						} else if (audioDataIn.getType() != MessageType.VOICE){
+							throw new IOException("Unexpected packet type");
+						}
+						
+						/*
+						 * Write audio data to speaker.
+						 */
+						aout.write(audioDataIn.getData(), 0, audioDataIn.getData().length);
 					}
-					
-					/*
-					 * Write audio data to speaker.
-					 */
-					aout.write(audioDataIn.getData(), 0, audioDataIn.getData().length);
 					if (aout.getPlayState() != AudioTrack.PLAYSTATE_PLAYING)
 						aout.play();
 					
@@ -791,8 +779,10 @@ public class SkullTalkService{
 				Log.e(TAG, "IO Error", ioe);
 				uiHandler.sendMessage(Message.obtain(
 				uiHandler, 1, ioe.getMessage()));
+				closeCall();
 				hangup();
 			}catch (Exception e){
+				closeCall();
 				throw new Error(e);
 			}finally{
 				/*
