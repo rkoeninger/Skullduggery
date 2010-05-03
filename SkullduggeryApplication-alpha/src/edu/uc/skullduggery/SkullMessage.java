@@ -15,15 +15,19 @@ public class SkullMessage {
 		HANGUP;
 	}
 	
-	private byte[] _hash;
 	private MessageType _type;
 	private byte[] _data;
 	
-	public SkullMessage(byte[] hash, MessageType type, byte[] data)
+	public SkullMessage(MessageType type, byte[] data)
 	{
-		_hash = hash;
 		_type = type;
 		_data = data;
+	}
+	
+	public SkullMessage(MessageType type)
+	{
+		_type = type;
+		_data = null;
 	}
 	
 	public byte[] getData()
@@ -31,18 +35,8 @@ public class SkullMessage {
 		return _data;
 	}
 	
-	public byte[] getHash()
-	{
-		return _hash;
-	}
-	
 	public MessageType getType()
 	{
 		return _type;
-	}
-	
-	public byte getTypeAsByte()
-	{
-		return (byte) _type.ordinal();
 	}
 }

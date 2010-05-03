@@ -1,8 +1,5 @@
 package edu.uc.skullduggery;
 
-import java.io.IOException;
-import java.net.InetAddress;
-
 public class Constants {
 	public static final String USERDBNAME = "SkullStorage";
 	public static final String USERINFOTABLE = "UserInfo";
@@ -22,16 +19,17 @@ public class Constants {
             "PublicExponent BLOB NOT NULL," +
             "PrivateExponent BLOB NOT NULL);";
     
-	//public static final String KEYALIAS = "SkullKeys";	
-	
 	public static final String HASHALGORITHM = "HmacSHA1";
 	public static final int HASHKEYSIZE = 128;
 	public static final String SYMMALGORITHM = "AES";
 	public static final int SYMKEYSIZE = 128;
 	public static final String ASYMALGORITHM = "RSA";
-	public static final int ASYMKEYSIZE = 4096;
+	public static final int ASYMKEYSIZE = 1024;
 	public static final byte[] MAGICBYTES = "SKUL".getBytes();
-	public static final String[] SSLCIPHERSUITES = 
+    
+	/* Unused, but doesn't hurt to keep for now.
+	 * May become important again later.
+	 * public static final String[] SSLCIPHERSUITES = 
 		new String[] {
 		"TLS_DH_anon_WITH_AES_128_CBC_SHA"
 		,"TLS_DH_anon_WITH_AES_256_CBC_SHA"
@@ -44,8 +42,7 @@ public class Constants {
 		,"SSL_DH_anon_EXPORT_WITH_RC4_40_MD5"
 		,"SSL_DH_anon_EXPORT_WITH_DES40_CBC_SHA"
 		,"TLS_ECDH_anon_WITH_NULL_SHA"
-	};                                                          
-	
+	};  
 	public static int ipBytesToInt(byte[] ipBytes){
 		int ip32 = 0;
 		for (int x = 0; x < ipBytes.length; ++x){
@@ -82,5 +79,5 @@ public class Constants {
 			"." + ((int) ipBytes[2]) + "." + ((int) ipBytes[3]);
 		}
 	}
-	
+	*/
 }

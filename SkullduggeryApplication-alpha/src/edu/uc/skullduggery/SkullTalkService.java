@@ -82,14 +82,11 @@ public class SkullTalkService{
 	private ContextWrapper appContext;
 	private SkullKeyManager keyManager;
 	
-//	private SkullMessageFactory messageFact;
-	private SkullUserInfoManager userManager;
 	private final String phoneNumber;
 	
 	private Socket callSocket;
 	private KeyPair localKeys;
 	private PublicKey remotePublicKey;
-//	private Mac mac;
 	private SecretKey sessionKey;
 	
 	/**
@@ -104,11 +101,14 @@ public class SkullTalkService{
 	 */
 	private SwitchStationClient serverComm;
 	private final String serverIP =
-	//Comment out the first / of the first line to toggle hardcoded IP.
-	//*
-	 "192.168.200.11";/*/
-	"10.0.2.2";
-	//*/
+		/* 
+		 * Comment out the first / of the first line to toggle hardcoded IP.
+		 * Note: It is difficult to talk between two emulated instances with the emulator's virtual subnet crap
+		 */
+		//*
+		 "192.168.200.11";/*/
+		"10.0.2.2";
+		//*/
 	
 	private final static int serverPort = 9002;
 	private final static int listenPort = 9004;
@@ -146,7 +146,6 @@ public class SkullTalkService{
 	public void start(){   
 		//TODO: Read public key from file
 		keyManager = new SkullKeyManager(appContext);
-		userManager = new SkullUserInfoManager(appContext);
 		serverComm.connect(serverIP, serverPort);
 		
 		// TODO: How to find our own contact info?
@@ -235,6 +234,57 @@ public class SkullTalkService{
 			throw new IOException("Unexpected packet type");
 		}
 	}
+	
+	private static SkullMessage readMessage(DataInputStream dis, MessageType expectedType) throws IOException
+	{
+		readMagic(dis);
+		readType(dis, expectedType);
+		
+		int dataLength = dis.readInt();
+		if(dataLength <= 0)
+			return new SkullMessage(expectedType);
+		
+		byte[] data = new byte[dataLength];
+		dis.readFully(data);
+		return new SkullMessage(expectedType, data);
+	}
+	
+	private static SkullMessage readMessage(DataInputStream dis) throws IOException
+	{
+		readMagic(dis);
+		byte typeByte = dis.readByte();
+		MessageType mesType = MessageType.values()[typeByte];
+		
+		int dataLength = dis.readInt();
+		if(dataLength <= 0)
+			return new SkullMessage(mesType);
+		
+		byte[] data = new byte[dataLength];
+		dis.readFully(data);
+		return new SkullMessage(mesType, data);
+	}
+	
+	private static void sendMessage(DataOutputStream dos, SkullMessage mes) throws IOException
+	{
+		dos.write(Constants.MAGICBYTES);
+		dos.writeByte((byte) mes.getType().ordinal());
+		byte[] data = mes.getData();
+		if(data == null)
+		{
+			dos.writeInt(0);
+			return;
+		}
+		dos.writeInt(data.length);
+		dos.write(data);
+	}
+	
+	private static void sendMessage(DataOutputStream dos, MessageType mType, byte[] data, int length) throws IOException
+	{
+		dos.write(Constants.MAGICBYTES);
+		dos.writeByte((byte) mType.ordinal());
+		dos.writeInt(length);
+		dos.write(data, 0, length);
+	}
 
 // TODO: what to do with this?
 /* *****************************************
@@ -291,39 +341,32 @@ public class SkullTalkService{
 		RSAPublicKey pub = (RSAPublicKey) localKeys.getPublic();
 		localPubMod = pub.getModulus();
 		localPubExp = pub.getPublicExponent();
-		info("Public exponent: " + localPubExp);		
 		
 		/*
 		 * Write our public key Modulus and Exponent.
 		 * Each one is written in its own packet.
 		 */
 		debug("Writing mod");
-		dos.write(Constants.MAGICBYTES);
-		dos.write((byte) MessageType.PUBMOD.ordinal());
-		dos.writeInt(localPubMod.toByteArray().length);
-		dos.write(localPubMod.toByteArray());
+		info("Mod: " + localPubMod);
+		sendMessage(dos, 
+				new SkullMessage(MessageType.PUBMOD, localPubMod.toByteArray()));
 		
 		debug("Writing exp");
-		dos.write(Constants.MAGICBYTES);
-		dos.write((byte) MessageType.PUBEXP.ordinal());
-		dos.writeInt(localPubExp.toByteArray().length);
-		dos.write(localPubExp.toByteArray());
+		info("Exp: " + localPubExp);
+		sendMessage(dos,
+				new SkullMessage(MessageType.PUBEXP, localPubExp.toByteArray()));
 		
 		/*
 		 * Read remote phone's public key Modulus and Exponent.
 		 * Each one is written in its own packet.
 		 */
 		debug("Reading foreign mod, exp");
-		readMagic(dis);
-		readType(dis, MessageType.PUBMOD);
-		byte[] remotePubModBytes = new byte[dis.readInt()];
-		dis.readFully(remotePubModBytes);
-		readMagic(dis);
-		readType(dis, MessageType.PUBEXP);
-		byte[] remotePubExpBytes = new byte[dis.readInt()];
-		dis.readFully(remotePubExpBytes);
-		BigInteger remotePubMod = new BigInteger(remotePubModBytes);
-		BigInteger remotePubExp = new BigInteger(remotePubExpBytes);
+		SkullMessage modMessage = readMessage(dis, MessageType.PUBMOD);
+		SkullMessage expMessage = readMessage(dis, MessageType.PUBEXP);
+		
+		BigInteger remotePubMod = new BigInteger(modMessage.getData());
+		BigInteger remotePubExp = new BigInteger(expMessage.getData());
+		info("Public Mod: " + remotePubMod);
 		info("Public Exp: " + remotePubExp);
 		
 		/*
@@ -365,19 +408,11 @@ public class SkullTalkService{
 			decryptor.init(Cipher.DECRYPT_MODE, localKeys.getPrivate());
 			
 			DataInputStream in = new DataInputStream(new CipherInputStream(
-					callSocket.getInputStream(), encryptor));
+					callSocket.getInputStream(), decryptor));
 			
 			debug("Reading AES key");
-			//Read an AES key from the stream
-			readMagic(in);
-			readType(in, MessageType.SESKEY);
-			int keyLen = in.readInt();
-			byte[] encSesKey;
-			if(keyLen > 0)
-				encSesKey = new byte[keyLen];
-			else
-				encSesKey = new byte[Constants.SYMKEYSIZE];
-			sessionKey = new SecretKeySpec(encSesKey, Constants.SYMMALGORITHM);
+			SkullMessage keyMessage = readMessage(in, MessageType.SESKEY);
+			sessionKey = new SecretKeySpec(keyMessage.getData(), Constants.SYMMALGORITHM);
 		}
 		
 		public void run(){
@@ -391,29 +426,16 @@ public class SkullTalkService{
 				serverComm.request(remotePhoneNumber, retvals);
 				InetSocketAddress remotePhoneAddress = (InetSocketAddress) retvals[0];
 				
-				
 				/* 
 				 * Open connection to remote phone.
 				 * This is analogous to dialing.
-				 * Makes 120 connect attempts at 250ms a piece for 30s timeout.
 				 * Open input and output streams.
 				 * If could not connect, report error to UI and cleanup + quit.
 				 */
 				debug("CONNECT - Connecting to " + remotePhoneAddress);
 				callSocket = new Socket();
-				/*
-				 * Was getting "Bad Socket" error - Need to handle hangups in this, but whatever.
-				for (int x = 0; x < 120; ++x){
-					try{
-						callSocket.connect(remotePhoneAddress, 250);
-						break;
-					}catch (SocketTimeoutException ste){
-						callSocket.close();
-						continue;
-					}catch (Exception e){
-						throw new Error(e);
-					}
-				}*/
+				
+				//TODO: Abort connection on hangup received. Should be done quickly.
 				callSocket.connect(remotePhoneAddress, 30000);
 				if (! callSocket.isConnected()){ 
 					throw new SocketException();
@@ -429,21 +451,19 @@ public class SkullTalkService{
 				 * The calling phone first sends a CALL packet containing
 				 * info about the caller and calling phone.
 				 */
-				dos.write(Constants.MAGICBYTES);
-				dos.write((byte) MessageType.CALL.ordinal());
-				dos.writeInt(phoneNumber.length());
-				dos.write(phoneNumber.getBytes());
+				
+				sendMessage(dos, new SkullMessage(MessageType.CALL, phoneNumber.getBytes()));
 				
 				debug("Receiving response");
 				/*
 				 * Make sure we receive an ACCEPT packet in return or fail.
 				 */
-				readMagic(dis);
-				byte messageType = dis.readByte();
-				if (messageType == MessageType.BUSY.ordinal()){
+				SkullMessage response = readMessage(dis);
+				
+				if (response.getType() == MessageType.BUSY){
 					throw new IOException("Remote phone busy");
 				}
-				if (messageType != MessageType.ACCEPT.ordinal()){
+				if (response.getType() != MessageType.ACCEPT){
 					throw new IOException("Unexpected packet type");
 				}
 
@@ -530,15 +550,13 @@ public class SkullTalkService{
 			kgen.init(Constants.SYMKEYSIZE);
 			SecretKey sesKeyTemp = kgen.generateKey();
 			
+			
 			sessionKey = new SecretKeySpec(
 			sesKeyTemp.getEncoded(), sesKeyTemp.getAlgorithm());
 			
 			debug("Writing secret key");
 			//TODO Send the AES key
-			out.write(Constants.MAGICBYTES);
-			out.writeInt(SkullMessage.MessageType.SESKEY.ordinal());
-			out.writeInt(sessionKey.getEncoded().length);
-			out.write(sessionKey.getEncoded());
+			sendMessage(out, new SkullMessage(MessageType.SESKEY, sessionKey.getEncoded()));
 			out.flush();
 			
 		}
@@ -589,13 +607,9 @@ public class SkullTalkService{
 					 * Read the initial CALL packet sent by the caller.
 					 */
 					debug("Reading client info");
-					readMagic(dis);
-					readType(dis, MessageType.CALL);
-					int remotePhoneNumberLength = dis.readInt();
-					byte[] remotePhoneNumberBytes =
-					new byte[remotePhoneNumberLength];
-					dis.readFully(remotePhoneNumberBytes);
-					String newRemotePhoneNumber = new String(remotePhoneNumberBytes);
+					SkullMessage clientInfo = readMessage(dis, MessageType.CALL);
+					
+					String newRemotePhoneNumber = new String(clientInfo.getData());
 
 					/*
 					 * After receiving the CALL packet,
@@ -603,14 +617,12 @@ public class SkullTalkService{
 					 */
 					if (callState != CallState.LISTENING){
 						info("Call rejected; busy.");
-						dos.write(Constants.MAGICBYTES);
-						dos.write((byte) MessageType.BUSY.ordinal());
+						sendMessage(dos, new SkullMessage(MessageType.BUSY));
 						newConnection.close();
 						continue;
 					} else {
 						info("Call accepted");
-						dos.write(Constants.MAGICBYTES);
-						dos.write((byte) MessageType.ACCEPT.ordinal());
+						sendMessage(dos, new SkullMessage(MessageType.ACCEPT));
 						callSocket = newConnection;
 						remotePhoneNumber = newRemotePhoneNumber;
 					}
@@ -669,7 +681,7 @@ public class SkullTalkService{
 					uiHandler, 1, nspe.getMessage()));
 					closeCall();
 					hangup();
-				}
+				} 
 				
 			}
 		}
@@ -689,21 +701,6 @@ public class SkullTalkService{
 			AudioRecord ain = null;
 			
 			try{
-				
-				/*
-				 * Check if the remote public key matches the stored hash
-				 */
-				debug("Checking remote public key");
-				SkullUserInfo remoteUser = userManager.getInstance(remotePhoneNumber);
-				if(!remoteUser.matchStoredPubKey(remotePublicKey.getEncoded()))
-				{
-					//TODO notify the user through a handler.
-					//TODO Store the key if they want to continue or whatever.
-					//TODO This may be a different call altogether.
-					//TODO Don't bother disconnecting automagically;
-					//they can always hang up
-				}
-				
 				/*
 				 * Create encrypt (outgoing) cipher from remote public key.
 				 * Create decrypt (incoming) cipher from local private key.
@@ -711,11 +708,11 @@ public class SkullTalkService{
 				debug("Creating encrypted streams");
 				Cipher encryptor =
 				Cipher.getInstance(sessionKey.getAlgorithm());
-				encryptor.init(Cipher.ENCRYPT_MODE, sessionKey);
+				encryptor.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(sessionKey.getEncoded(), sessionKey.getAlgorithm()));
 				Cipher decryptor =
 				Cipher.getInstance(sessionKey.getAlgorithm());
-				decryptor.init(Cipher.DECRYPT_MODE, sessionKey);
-				
+				decryptor.init(Cipher.DECRYPT_MODE, new SecretKeySpec(sessionKey.getEncoded(), sessionKey.getAlgorithm()));
+				 
 				/*
 				 * Open streams and prepare audio tracks.
 				 */
@@ -765,40 +762,33 @@ public class SkullTalkService{
 					 * Hangup if audio stops recording for whatever reason.
 					 */
 					if ((callState != CallState.TALKING) || (bytesRead < 0)){
-						out.write(Constants.MAGICBYTES);
-						out.writeByte((byte) MessageType.HANGUP.ordinal());
+						sendMessage(out, new SkullMessage(MessageType.HANGUP));
 						break;
 					}
-					out.write(Constants.MAGICBYTES);
-					out.writeByte((byte) MessageType.VOICE.ordinal());
-					out.writeInt(bytesRead);
-					out.write(buf, 0, bytesRead);
+					sendMessage(out, MessageType.VOICE, buf, bytesRead);
 
 					/*
 					 * Read a packet of voice data.
 					 * If it is a HANGUP packet, then terminate thread.
 					 */
-					readMagic(in);
-					int messageType = in.readByte();
-					if (messageType == MessageType.HANGUP.ordinal()){
+					SkullMessage audioDataIn = readMessage(in);
+					if (audioDataIn.getType() == MessageType.HANGUP){
 						throw new EOFException("Remote phone hung-up");
-					} else if (messageType != MessageType.VOICE.ordinal()){
+					} else if (audioDataIn.getType() != MessageType.VOICE){
 						throw new IOException("Unexpected packet type");
 					}
-					bytesRead = in.readInt();
-					in.readFully(buf, 0, bytesRead);
 					
 					/*
 					 * Write audio data to speaker.
 					 */
-					aout.write(buf, 0, bytesRead);
+					aout.write(audioDataIn.getData(), 0, audioDataIn.getData().length);
 					if (aout.getPlayState() != AudioTrack.PLAYSTATE_PLAYING)
 						aout.play();
 					
 				}
 				
 			}catch (IOException ioe){
-				Log.e(TAG, "error'd", ioe);
+				Log.e(TAG, "IO Error", ioe);
 				uiHandler.sendMessage(Message.obtain(
 				uiHandler, 1, ioe.getMessage()));
 				hangup();

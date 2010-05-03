@@ -52,22 +52,11 @@ public class SkullMessageFactory {
 	
 	public SkullMessage createMessage(byte[] data, SkullMessage.MessageType type)
 	{
-		return new SkullMessage(_mac.doFinal(data), type, data);
+		return new SkullMessage(type, data);
 	}
 	
 	public int getHashSize()
 	{
 		return _mac.getMacLength();
-	}
-	
-	public boolean checkHash(SkullMessage m)
-	{
-		byte[] messageData, dataHash, messageHash;
-		
-		messageData = m.getData();
-		messageHash = m.getHash();
-		
-		dataHash = _mac.doFinal(messageData);
-		return java.util.Arrays.equals(messageHash, dataHash);
 	}
 }
