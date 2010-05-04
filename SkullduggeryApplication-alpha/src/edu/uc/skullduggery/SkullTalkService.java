@@ -105,7 +105,7 @@ public class SkullTalkService{
 		 * Comment out the first / of the first line to toggle hardcoded IP.
 		 * Note: It is difficult to talk between two emulated instances with the emulator's virtual subnet crap
 		 */
-		/*
+		//*
 		 "192.168.200.11";/*/
 		"10.0.2.2";
 		//*/
@@ -678,7 +678,6 @@ public class SkullTalkService{
 	public class TalkThread extends Thread{
 
 		private int debug(String msg){return SkullTalkService.debug("TALK:" + msg);}
-		@SuppressWarnings("unused")
 		private int info(String msg){return SkullTalkService.info("TALK:" + msg);}
 		
 		public void run(){
@@ -707,6 +706,7 @@ public class SkullTalkService{
 				debug("Initializing audio transmission system");
 				byte[] buf = new byte[1024 * 4];
 				int bytesRead = 0;
+				int readPackets = 0;
 				in = new DataInputStream(new CipherInputStream(
 						callSocket.getInputStream(), decryptor));
 				out = new DataOutputStream(new CipherOutputStream(
@@ -757,8 +757,10 @@ public class SkullTalkService{
 					 * Only send data if we've got a substantial message to send.
 					 */
 					if(bytesRead >= 128){
+						debug("Sending message");
 						sendMessage(out, MessageType.VOICE, buf, bytesRead);
 						bytesRead = 0;
+						readPackets++;
 					}
 
 					/*
@@ -766,7 +768,8 @@ public class SkullTalkService{
 					 * If it is a HANGUP packet, then terminate thread.
 					 * Read enough packets to flush out the cipher queue.
 					 */
-					while(in.available() >= 128){
+					if(readPackets  > 2){
+						info("Reading message");
 						SkullMessage audioDataIn = readMessage(in);
 						if (audioDataIn.getType() == MessageType.HANGUP){
 							throw new EOFException("Remote phone hung-up");
