@@ -756,7 +756,7 @@ public class SkullTalkService{
 					/*
 					 * Only send data if we've got a substantial message to send.
 					 */
-					if(bytesRead >= 128){
+					if(bytesRead >= 64){
 						debug("Sending message");
 						sendMessage(out, MessageType.VOICE, buf, bytesRead);
 						bytesRead = 0;
@@ -768,7 +768,7 @@ public class SkullTalkService{
 					 * If it is a HANGUP packet, then terminate thread.
 					 * Read enough packets to flush out the cipher queue.
 					 */
-					if(readPackets  > 2){
+					if(readPackets  > 1){
 						info("Reading message");
 						SkullMessage audioDataIn = readMessage(in);
 						if (audioDataIn.getType() == MessageType.HANGUP){
