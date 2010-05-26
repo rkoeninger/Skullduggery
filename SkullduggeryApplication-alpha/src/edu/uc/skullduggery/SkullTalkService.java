@@ -107,7 +107,7 @@ public class SkullTalkService{
 		 */
 		//*
 		 "192.168.200.11";/*/
-		"10.0.2.2";
+		"10.0.2.2"; 
 		//*/
 	
 	private final static int serverPort = 9002;
@@ -276,6 +276,7 @@ public class SkullTalkService{
 		}
 		dos.writeInt(data.length);
 		dos.write(data);
+		dos.flush();
 	}
 	
 	private static void sendMessage(DataOutputStream dos, MessageType mType, byte[] data, int length) throws IOException
@@ -284,6 +285,7 @@ public class SkullTalkService{
 		dos.writeByte((byte) mType.ordinal());
 		dos.writeInt(length);
 		dos.write(data, 0, length);
+		dos.flush();
 	}
 	
 	/**
@@ -316,14 +318,12 @@ public class SkullTalkService{
 		 * Each one is written in its own packet.
 		 */
 		debug("Writing mod");
-		info("Mod: " + localPubMod);
-		sendMessage(dos, 
-				new SkullMessage(MessageType.PUBMOD, localPubMod.toByteArray()));
+		info("Local Mod: " + localPubMod);
+		sendMessage(dos, new SkullMessage(MessageType.PUBMOD, localPubMod.toByteArray()));
 		
 		debug("Writing exp");
-		info("Exp: " + localPubExp);
-		sendMessage(dos,
-				new SkullMessage(MessageType.PUBEXP, localPubExp.toByteArray()));
+		info("Local Exp: " + localPubExp);
+		sendMessage(dos, new SkullMessage(MessageType.PUBEXP, localPubExp.toByteArray()));
 		
 		/*
 		 * Read remote phone's public key Modulus and Exponent.
@@ -335,8 +335,8 @@ public class SkullTalkService{
 		
 		BigInteger remotePubMod = new BigInteger(modMessage.getData());
 		BigInteger remotePubExp = new BigInteger(expMessage.getData());
-		info("Public Mod: " + remotePubMod);
-		info("Public Exp: " + remotePubExp);
+		info("Remote Mod: " + remotePubMod);
+		info("Remote Exp: " + remotePubExp);
 		
 		/*
 		 * Generate a public key for the remote phone from the
@@ -370,11 +370,11 @@ public class SkullTalkService{
 			 */
 			debug("Creating ciphers");
 			Cipher encryptor =
-			Cipher.getInstance(remotePublicKey.getAlgorithm());
+			Cipher.getInstance(Constants.ASYMALGORITHMMODE);
 			encryptor.init(Cipher.ENCRYPT_MODE, remotePublicKey);
 			
 			Cipher decryptor =
-			Cipher.getInstance(localKeys.getPrivate().getAlgorithm());
+			Cipher.getInstance(Constants.ASYMALGORITHMMODE);
 			decryptor.init(Cipher.DECRYPT_MODE, localKeys.getPrivate());
 			
 			debug("Reading AES key");
@@ -514,29 +514,22 @@ public class SkullTalkService{
 			 * Create decrypt (incoming) cipher from local private key.
 			 */
 			Cipher encryptor =
-			Cipher.getInstance(remotePublicKey.getAlgorithm());
-			encryptor.init(Cipher.ENCRYPT_MODE, remotePublicKey);
-			Cipher decryptor =
-			Cipher.getInstance(localKeys.getPrivate().getAlgorithm());
-			decryptor.init(Cipher.DECRYPT_MODE, localKeys.getPrivate());
+			Cipher.getInstance(Constants.ASYMALGORITHMMODE);
+			encryptor.init(Cipher.WRAP_MODE, remotePublicKey);
 			
 			debug("Creating secret key");
 			//Generate an AES key
-			KeyGenerator kgen = KeyGenerator.getInstance(
-			Constants.SYMMALGORITHM);
+			KeyGenerator kgen = KeyGenerator.getInstance(Constants.SYMMALGORITHM);
 			kgen.init(Constants.SYMKEYSIZE);
-			SecretKey sesKeyTemp = kgen.generateKey();
-			
-			sessionKey = new SecretKeySpec(
-			sesKeyTemp.getEncoded(), sesKeyTemp.getAlgorithm());
+			sessionKey = kgen.generateKey();
+			byte[] sessionKeyWrapped = encryptor.wrap(sessionKey);
 			
 			debug("Writing secret key");
-			//Send the AES key
-			//FIXME: Try to remedy a 'Too much data for RSA block' error.
-			byte[] sessionKeyBytes = sessionKey.getEncoded();
-			byte[] sessionKeyBytesMessage = encryptor.doFinal(sessionKeyBytes);
+			BigInteger sessionKeyEnc = new BigInteger(sessionKeyWrapped);
+			info("Session Key: " + sessionKeyEnc);
 			
-			sendMessage(dos, new SkullMessage(MessageType.SESKEY, sessionKeyBytesMessage));
+			//Send the AES key
+			sendMessage(dos, new SkullMessage(MessageType.SESKEY, sessionKeyWrapped));
 		}
 		
 		public void run(){
@@ -694,10 +687,10 @@ public class SkullTalkService{
 				 */
 				debug("Creating encrypted streams");
 				Cipher encryptor =
-				Cipher.getInstance(sessionKey.getAlgorithm());
+				Cipher.getInstance(Constants.SYMMALGORITHMMODE);
 				encryptor.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(sessionKey.getEncoded(), sessionKey.getAlgorithm()));
 				Cipher decryptor =
-				Cipher.getInstance(sessionKey.getAlgorithm());
+				Cipher.getInstance(Constants.SYMMALGORITHMMODE);
 				decryptor.init(Cipher.DECRYPT_MODE, new SecretKeySpec(sessionKey.getEncoded(), sessionKey.getAlgorithm()));
 				 
 				/*
@@ -804,9 +797,10 @@ public class SkullTalkService{
 				closeCall();
 				
 				if (ain != null)
-					if (ain.getRecordingState() ==
-					AudioRecord.RECORDSTATE_RECORDING)
-						ain.stop();	
+				{
+					if (ain.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING)
+						ain.stop();
+				}
 				if (aout != null)
 					if (aout.getPlayState() ==
 					AudioTrack.PLAYSTATE_PLAYING)

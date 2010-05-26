@@ -4,10 +4,8 @@ import java.io.*;
 import java.math.*;
 import java.net.*;
 import javax.crypto.*;
-import javax.crypto.spec.SecretKeySpec;
 
 import java.security.*;
-import java.security.spec.*;
 import java.security.interfaces.*;
 import java.util.*;
 
@@ -24,6 +22,15 @@ import java.util.*;
  */
 public class RemotePhoneSubstitute {
 
+
+	public static final String SYMMALGORITHM = "AES";
+	public static final String SYMMALGORITHMMODE = "AES";
+	public static final int SYMKEYSIZE = 128;
+	
+	public static final String ASYMALGORITHM = "RSA";
+	public static final String ASYMALGORITHMMODE = "RSA/ECB/PKCS1Padding";
+	public static final int ASYMKEYSIZE = 1024;
+	
 	public enum MessageType
 	{
 		CALL,
@@ -37,15 +44,6 @@ public class RemotePhoneSubstitute {
 		VOICE,
 		HANGUP;
 	}
-
-	/* Input and output audio must be of this format */
-	private static final int sampleRate = 8000;     // 8khz
-	private static final int sampleSize = 16;       // 16-bit, 2-byte
-	private static final int channels = 1;          // mono
-	private static final boolean bigEndian = false; // little-endian
-	private static final byte[] magic = "SKUL".getBytes();
-	
-	
 	
 	/**
 	 * args[0] = phone to call's ip
@@ -82,13 +80,15 @@ public class RemotePhoneSubstitute {
 		readMessage(dis);
 		
 		/*Key exchange handshake*/
-		KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
+		KeyPairGenerator kpg = KeyPairGenerator.getInstance(ASYMALGORITHM);
 		kpg.initialize(1024);
 		
 		KeyPair localKeys = kpg.generateKeyPair();//changed code
 		RSAPublicKey pub = (RSAPublicKey) localKeys.getPublic();
 		BigInteger localPubMod = pub.getModulus();
 		BigInteger localPubExp = pub.getPublicExponent();
+		System.out.println("Local Mod: " + localPubMod);
+		System.out.println("Local Exp: " + localPubExp);
 		
 		writeMessage(dos, MessageType.PUBMOD, localPubMod.toByteArray());
 		writeMessage(dos, MessageType.PUBEXP, localPubExp.toByteArray());
@@ -98,31 +98,28 @@ public class RemotePhoneSubstitute {
 		BigInteger remotePubMod = new BigInteger(remotePubModBytes);
 		BigInteger remotePubExp = new BigInteger(remotePubExpBytes);
 		
-		RSAPublicKeySpec remotePubKeySpec =
-		new RSAPublicKeySpec(remotePubMod, remotePubExp);
-		KeyFactory keygen = KeyFactory.getInstance("RSA");
-		PublicKey remotePublicKey = keygen.generatePublic(remotePubKeySpec);
+		System.out.println("Remote Mod: " + remotePubMod);
+		System.out.println("Remote Exp: " + remotePubExp);
 		
 		/*Get session key*/
 		Cipher decryptor = 
-		Cipher.getInstance(localKeys.getPrivate().getAlgorithm());
-		decryptor.init(Cipher.DECRYPT_MODE, localKeys.getPrivate());
+		Cipher.getInstance(ASYMALGORITHMMODE);
+		decryptor.init(Cipher.UNWRAP_MODE, localKeys.getPrivate());
 				
 		System.out.println("Reading session key");
-		byte[] sessionKeyBytes = readMessage(dis, MessageType.SESKEY);
+		byte[] sessionKeyWrapped = readMessage(dis, MessageType.SESKEY);
 		System.out.println("Session key read");
 		
-		System.out.println("Session Key:" + sessionKeyBytes.length);
+		BigInteger sesKeyEnc = new BigInteger(sessionKeyWrapped);
+		System.out.println("Session Key:" + sesKeyEnc);
 		
-		byte[] sessionKeyBytesDec = decryptor.doFinal(sessionKeyBytes);
-				
-		SecretKey sessionKey = new SecretKeySpec(sessionKeyBytesDec, "AES");
+		SecretKey sessionKey = (SecretKey) decryptor.unwrap(sessionKeyWrapped, SYMMALGORITHM,Cipher.SECRET_KEY);
 		
 		/*Start talking*/
-		Cipher encryptor = Cipher.getInstance(sessionKey.getAlgorithm());
+		Cipher encryptor = Cipher.getInstance(SYMMALGORITHMMODE);
 		encryptor.init(Cipher.ENCRYPT_MODE, sessionKey);
 		
-		decryptor = Cipher.getInstance(sessionKey.getAlgorithm());
+		decryptor = Cipher.getInstance(SYMMALGORITHMMODE);
 		decryptor.init(Cipher.DECRYPT_MODE, sessionKey);
 
 		dos = new DataOutputStream(new CipherOutputStream(
@@ -130,7 +127,8 @@ public class RemotePhoneSubstitute {
 		dis = new DataInputStream(new CipherInputStream(
 		callSocket.getInputStream(), decryptor));
 		
-		byte[] buf = new byte[1024 * 4];
+		byte[] buf = new byte[4096];
+		byte[] inBuf = null;
 		int bytesRead = 0;
 		int sentPackets = 0;
 		
@@ -139,27 +137,31 @@ public class RemotePhoneSubstitute {
 			// Read from loop (similar to microphone record)
 			bytesRead = lais.read(buf, 0, buf.length);
 			System.out.println("Read " + bytesRead + " bytes");
-			System.out.println("Writing data to output stream");
-			
+
 			// Write packet of voice data
-			writeMessage(dos, MessageType.VOICE,buf, bytesRead);
+			System.out.println("Writing data to output stream");
+			writeMessage(dos, MessageType.VOICE, buf, bytesRead);
 			System.out.println("Data written to output stream");
+			sentPackets++;
+			dos.flush();
 			
-//			if(sentPackets > 1){
-//				System.out.println("Reading incoming message");
-//				buf = readMessage(dis);
-//			}
-			
-			// Write to audio log (similar to speaker play)
-			System.out.println("Writing incoming message to audio log");
-			alog.write(buf);
+			if(sentPackets > 1){
+				System.out.println("Reading incoming message");
+				inBuf = readMessage(dis);
+
+				// Write to audio log (similar to speaker play)
+				System.out.println("Writing incoming message to audio log");
+				alog.write(inBuf);
+			}
 		}
 	}
+
+	private static final byte[] magicBytes = "SKUL".getBytes();
 	
 	private static void readMagic(DataInputStream dis) throws IOException{
 		byte[] magic = new byte[4];
 		dis.readFully(magic, 0, magic.length);
-		if (! Arrays.equals(magic, "SKUL".getBytes()))
+		if (! Arrays.equals(magic, magicBytes))
 			throw new IOException("Wrong magic bytes");
 	}
 
@@ -194,16 +196,26 @@ public class RemotePhoneSubstitute {
 	
 	private static void writeMessage(DataOutputStream dos,MessageType type, byte[] data) throws IOException
 	{
-		dos.write(magic);
-		dos.write((byte) type.ordinal());
+		dos.write(magicBytes);
+		dos.writeByte(type.ordinal());
+		if(data == null)
+		{
+			dos.writeInt(0);
+			return;
+		}
 		dos.writeInt(data.length);
 		dos.write(data);		
 	}
 	
 	private static void writeMessage(DataOutputStream dos,MessageType type, byte[] data, int len) throws IOException
 	{
-		dos.write(magic);
-		dos.write((byte) type.ordinal());
+		dos.write(magicBytes);
+		dos.writeByte(type.ordinal());
+		if(data == null)
+		{
+			dos.writeInt(0);
+			return;
+		}
 		dos.writeInt(len);
 		dos.write(data,0,len);		
 	}
@@ -215,7 +227,7 @@ public class RemotePhoneSubstitute {
 		}
 		public int read(byte[] buf, int off, int len) throws Exception{
 			int bytesRead = raf.read(buf, off, len);
-			if (bytesRead < 0){
+			while (bytesRead < 0){
 				raf.seek(0);
 				bytesRead = raf.read(buf, off, len);
 			}

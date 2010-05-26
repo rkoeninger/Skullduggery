@@ -21,10 +21,15 @@ public class Constants {
     
 	public static final String HASHALGORITHM = "HmacSHA1";
 	public static final int HASHKEYSIZE = 128;
+	
 	public static final String SYMMALGORITHM = "AES";
+	public static final String SYMMALGORITHMMODE = "AES";
 	public static final int SYMKEYSIZE = 128;
+	
 	public static final String ASYMALGORITHM = "RSA";
+	public static final String ASYMALGORITHMMODE = "RSA/ECB/Pkcs1Padding";
 	public static final int ASYMKEYSIZE = 1024;
+	
 	public static final byte[] MAGICBYTES = "SKUL".getBytes();
     
 	/* Unused, but doesn't hurt to keep for now.
